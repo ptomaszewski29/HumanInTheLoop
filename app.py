@@ -2,12 +2,14 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from agents.developer_agent import DeveloperAgent
+from database.task_repository import TaskRepository
 from models.task import Task
 from models.task_status import TaskStatus
 
 load_dotenv()
 
 agent = DeveloperAgent()
+repository = TaskRepository()
 
 if "task" not in st.session_state:
     st.session_state.task = None
@@ -35,11 +37,15 @@ if st.button("Generuj kod") and task_description:
             task_description
         )
 
-        st.session_state.task = Task(
+        new_task = Task(
             description=task_description,
             generated_code=generated_code,
             status=TaskStatus.WAITING_FOR_APPROVAL,
         )
+
+        repository.save(new_task)
+
+        st.session_state.task = new_task
 
         st.rerun()
 
