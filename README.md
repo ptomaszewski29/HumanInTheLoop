@@ -7,7 +7,7 @@ This project requires a Google Gemini API key.
 ### 1. Clone the repository
 
 ```powershell
-git clone https://github.com/pete29/HumanInTheLoop.git
+git clone https://github.com/ptomaszewski29/HumanInTheLoop.git
 cd HumanInTheLoop
 ```
 
