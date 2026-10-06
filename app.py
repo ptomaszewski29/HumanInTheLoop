@@ -16,68 +16,59 @@ if "task" not in st.session_state:
 
 st.title("👑 Human In The Loop")
 
+with st.sidebar:
+    st.header("📜 Task History")
+
+    tasks = repository.get_all()
+
+    if not tasks:
+        st.write("No tasks yet.")
+
+    for task_item in tasks:
+        label = f"{task_item.status.value} | {task_item.description[:30]}"
+
+        if st.button(
+            label,
+            key=task_item.id,
+            use_container_width=True,
+        ):
+            st.session_state.task = repository.get_by_id(task_item.id)
+
+            st.rerun()
+
 if st.session_state.task is None:
     st.info("Status: NEW")
 else:
-    st.info(
-        f"Status: {st.session_state.task.status.value}"
-    )
+    st.info(f"Status: {st.session_state.task.status.value}")
 
-task_description = st.text_area(
-    "Opisz zadanie dla AI"
-)
+task_description = st.text_area("Opisz zadanie dla AI")
 
 if st.button("Generuj kod") and task_description:
+    try:
+        generated_code = agent.execute(task_description)
 
-    with st.spinner(
-        "Gemini generuje kod..."
-    ):
+    except Exception as error:
+        st.error(f"AI request failed: {error}")
 
-        generated_code = agent.execute(
-            task_description
-        )
+        st.stop()
 
-        new_task = Task(
-            description=task_description,
-            generated_code=generated_code,
-            status=TaskStatus.WAITING_FOR_APPROVAL,
-        )
+    new_task = Task(
+        description=task_description,
+        generated_code=generated_code,
+        status=TaskStatus.WAITING_FOR_APPROVAL,
+    )
 
-        repository.save(new_task)
+    repository.save(new_task)
 
-        st.session_state.task = new_task
+    st.session_state.task = new_task
 
-        st.rerun()
+    st.rerun()
 
 if st.session_state.task:
+    st.subheader("Task Details")
 
-    st.subheader(
-        "Kod oczekujący na decyzję"
-    )
+    st.write(f"**Created:** {st.session_state.task.created_at}")
 
-    st.code(
-        st.session_state.task.generated_code,
-        language="typescript",
-    )
+    st.write(f"**Status:** {st.session_state.task.status.value}")
 
-    col1, col2 = st.columns(2)
-
-    with col1:
-
-        if st.button("✅ Akceptuj"):
-
-            st.session_state.task.status = (
-                TaskStatus.APPROVED
-            )
-
-            st.rerun()
-
-    with col2:
-
-        if st.button("❌ Odrzuć"):
-
-            st.session_state.task.status = (
-                TaskStatus.REJECTED
-            )
-
-            st.rerun()
+    st.write(f"**Description:** {st.session_state.task.description}")

@@ -59,11 +59,33 @@ class TaskRepository:
 
         self.connection.commit()
 
+    def update_status(
+        self,
+        task_id: str,
+        status: TaskStatus,
+    ) -> None:
+        cursor = self.connection.cursor()
+
+        cursor.execute(
+            """
+            UPDATE tasks
+            SET status = ?
+            WHERE id = ?
+            """,
+            (
+                status.value,
+                task_id,
+            ),
+        )
+
+        self.connection.commit()
+
     def get_all(
         self,
     ) -> list[Task]:
 
         cursor = self.connection.cursor()
+
         rows = cursor.execute("""
             SELECT
                 id,
@@ -89,3 +111,34 @@ class TaskRepository:
             )
 
         return tasks
+
+    def get_by_id(
+        self,
+        task_id: str,
+    ) -> Task | None:
+        cursor = self.connection.cursor()
+
+        row = cursor.execute(
+            """
+            SELECT
+                id,
+                description,
+                generated_code,
+                status,
+                created_at
+            FROM tasks
+            WHERE id = ?
+            """,
+            (task_id,),
+        ).fetchone()
+
+        if row is None:
+            return None
+
+        return Task(
+            id=row[0],
+            description=row[1],
+            generated_code=row[2],
+            status=TaskStatus(row[3]),
+            created_at=row[4],
+        )
