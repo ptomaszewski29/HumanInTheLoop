@@ -56,3 +56,14 @@ class Settings:
     OLLAMA_URL = (
         "http://localhost:11434/api/generate"
     )
+
+    # Reasoning models (qwen3, deepseek-r1)
+    # burn the whole token budget on
+    # thinking and return an empty
+    # "response" field - keep it off.
+
+    OLLAMA_THINKING = False
+
+    OLLAMA_NUM_PREDICT = 4096
+
+    OLLAMA_TIMEOUT = 300

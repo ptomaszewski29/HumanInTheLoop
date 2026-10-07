@@ -1,3 +1,6 @@
+from services.code_cleaner import (
+    strip_code_fences,
+)
 from services.llm_factory import LLMFactory
 
 
@@ -29,4 +32,6 @@ Code:
 {generated_code}
 """
 
-        return self.llm.generate_text(prompt)
+        return strip_code_fences(
+            self.llm.generate_text(prompt)
+        )

@@ -6,7 +6,7 @@ agent = ArchitectAgent()
 
 review = agent.execute(
     "Create email validator",
-    """
+    r"""
 function validateEmail(
     email: string
 ): boolean {
@@ -22,5 +22,7 @@ print()
 print("=" * 80)
 print("ARCHITECT REVIEW")
 print("=" * 80)
-print(repr(review))
+print(f"score: {review.score}/100")
+print(f"recommendation: {review.recommendation.value}")
+print(review.review)
 print("=" * 80)

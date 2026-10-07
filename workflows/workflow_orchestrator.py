@@ -25,6 +25,12 @@ class WorkflowOrchestrator:
 
         generated_code = self.developer.execute(task_description)
 
+        if not generated_code.strip():
+            raise RuntimeError(
+                "DeveloperAgent returned no code - "
+                "aborting before architect and QA."
+            )
+
         print(generated_code)
 
         print("=" * 80)
@@ -36,7 +42,7 @@ class WorkflowOrchestrator:
             generated_code,
         )
 
-        print(architecture_review)
+        print(architecture_review.to_markdown())
 
         print("=" * 80)
         print("QA")
@@ -49,9 +55,9 @@ class WorkflowOrchestrator:
         task = Task(
             description=task_description,
             generated_code=generated_code,
-            architecture_review=architecture_review,
+            architecture_review=architecture_review.to_markdown(),
             generated_tests=generated_tests,
-            architecture_score=0,
+            architecture_score=architecture_review.score,
             status=TaskStatus.WAITING_FOR_APPROVAL,
         )
 
@@ -59,7 +65,16 @@ class WorkflowOrchestrator:
         print("TASK OBJECT")
         print("=" * 80)
 
+        print(f"code length: " f"{len(task.generated_code)}")
+
         print(f"review length: " f"{len(task.architecture_review)}")
+
+        print(f"score: " f"{task.architecture_score}/100")
+
+        print(
+            f"recommendation: "
+            f"{architecture_review.recommendation.value}"
+        )
 
         print(f"tests length: " f"{len(task.generated_tests)}")
 

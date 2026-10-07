@@ -1,6 +1,10 @@
 import requests
 
 from config.settings import Settings
+from services.code_cleaner import (
+    strip_code_fences,
+    strip_thinking,
+)
 
 
 class OllamaService:
@@ -21,21 +25,33 @@ class OllamaService:
                 "model": self.model,
                 "prompt": prompt,
                 "stream": False,
+                "think": Settings.OLLAMA_THINKING,
                 "options": {
-                    "num_predict": 2048,
+                    "num_predict": Settings.OLLAMA_NUM_PREDICT,
                 },
             },
-            timeout=300,
+            timeout=Settings.OLLAMA_TIMEOUT,
         )
 
         response.raise_for_status()
 
         data = response.json()
 
-        return data.get(
-            "response",
-            "",
+        text = strip_thinking(
+            data.get(
+                "response",
+                "",
+            )
         )
+
+        if not text:
+            raise RuntimeError(
+                self.build_empty_response_error(
+                    data
+                )
+            )
+
+        return text
 
     def generate_code(
         self,
@@ -54,6 +70,44 @@ Task:
 {task}
 """
 
-        return self.generate_text(
-            prompt
+        return strip_code_fences(
+            self.generate_text(
+                prompt
+            )
+        )
+
+    def build_empty_response_error(
+        self,
+        data: dict,
+    ) -> str:
+
+        reason = data.get(
+            "done_reason",
+            "unknown",
+        )
+
+        thinking = len(
+            data.get("thinking") or ""
+        )
+
+        if reason == "length":
+            hint = (
+                "token limit reached - raise "
+                "Settings.OLLAMA_NUM_PREDICT"
+            )
+
+        elif thinking:
+            hint = (
+                "the model answered in the "
+                "'thinking' field only - set "
+                "Settings.OLLAMA_THINKING = False"
+            )
+
+        else:
+            hint = "the model returned nothing"
+
+        return (
+            f"Ollama model '{self.model}' returned an "
+            f"empty response (done_reason={reason}, "
+            f"thinking chars={thinking}): {hint}"
         )

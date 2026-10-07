@@ -99,6 +99,12 @@ if st.session_state.task:
 
         if task.architecture_review:
 
+            st.progress(
+                task.architecture_score / 100,
+                text=f"Architecture score: "
+                f"{task.architecture_score}/100",
+            )
+
             st.markdown(task.architecture_review)
 
         else:

@@ -39,6 +39,19 @@ class TaskRepository:
         self,
         task: Task,
     ) -> None:
+
+        print("=" * 80)
+        print("SAVING TASK")
+        print("=" * 80)
+
+        print(f"CODE LENGTH: {len(task.generated_code)}")
+
+        print(f"REVIEW LENGTH: {len(task.architecture_review)}")
+
+        print(f"TESTS LENGTH: {len(task.generated_tests)}")
+
+        print("=" * 80)
+
         cursor = self.connection.cursor()
 
         cursor.execute(
@@ -153,7 +166,7 @@ class TaskRepository:
         if row is None:
             return None
 
-        return Task(
+        task = Task(
             id=row[0],
             description=row[1],
             generated_code=row[2],
@@ -163,3 +176,17 @@ class TaskRepository:
             status=TaskStatus(row[6]),
             created_at=row[7],
         )
+
+        print("=" * 80)
+        print("LOADING TASK")
+        print("=" * 80)
+
+        print(f"CODE LENGTH: {len(task.generated_code)}")
+
+        print(f"REVIEW LENGTH: {len(task.architecture_review)}")
+
+        print(f"TESTS LENGTH: {len(task.generated_tests)}")
+
+        print("=" * 80)
+
+        return task

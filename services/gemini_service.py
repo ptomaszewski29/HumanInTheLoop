@@ -5,6 +5,9 @@ import google.generativeai as genai
 from config.settings import (
     Settings,
 )
+from services.code_cleaner import (
+    strip_code_fences,
+)
 
 
 class GeminiService:
@@ -42,19 +45,9 @@ Task:
 """
         )
 
-        code = response.text
-
-        code = code.replace(
-            "```typescript",
-            ""
+        return strip_code_fences(
+            response.text
         )
-
-        code = code.replace(
-            "```",
-            ""
-        )
-
-        return code.strip()
 
     def generate_text(
         self,
