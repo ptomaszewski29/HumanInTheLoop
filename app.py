@@ -50,7 +50,7 @@ task_description = st.text_area("Opisz zadanie dla AI")
 
 if st.button("Generuj kod") and task_description:
 
-    with st.spinner("🤖 DeveloperAgent → ArchitectAgent → QAAgent working..."):
+    with st.spinner("🤖 Developer → Architect → QA ..."):
 
         try:
 
@@ -80,6 +80,33 @@ if st.session_state.task:
 
     st.write(f"**Description:** {task.description}")
 
+    metric_1, metric_2, metric_3 = st.columns(3)
+
+    with metric_1:
+
+        st.metric(
+            "Architecture Score",
+            f"{task.architecture_score}/100",
+        )
+
+    with metric_2:
+
+        st.metric(
+            "Recommendation",
+            task.recommendation.value,
+        )
+
+    with metric_3:
+
+        st.metric(
+            "Review Iterations",
+            task.review_iterations,
+        )
+
+    if task.architecture_score > 0:
+
+        st.progress(task.architecture_score / 100)
+
     tab_code, tab_review, tab_tests = st.tabs(
         [
             "💻 Code",
@@ -90,32 +117,20 @@ if st.session_state.task:
 
     with tab_code:
 
-        st.code(
-            task.generated_code,
-            language="typescript",
-        )
+        if task.generated_code:
+
+            st.code(
+                task.generated_code,
+                language="typescript",
+            )
+
+        else:
+
+            st.warning("No code generated.")
 
     with tab_review:
 
         if task.architecture_review:
-
-            score_column, decision_column = st.columns(2)
-
-            with score_column:
-
-                st.metric(
-                    "Architecture score",
-                    f"{task.architecture_score}/100",
-                )
-
-            with decision_column:
-
-                st.metric(
-                    "Recommendation",
-                    task.recommendation.value,
-                )
-
-            st.progress(task.architecture_score / 100)
 
             st.markdown(task.architecture_review)
 
@@ -135,6 +150,8 @@ if st.session_state.task:
         else:
 
             st.info("No tests available.")
+
+    st.divider()
 
     col1, col2 = st.columns(2)
 

@@ -24,6 +24,8 @@ class Task:
 
     recommendation: ReviewDecision = ReviewDecision.UNKNOWN
 
+    review_iterations: int = 0
+
     status: TaskStatus = TaskStatus.NEW
 
     created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
