@@ -3,13 +3,14 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from models.task_status import TaskStatus
+from workflows.review_decision import (
+    ReviewDecision,
+)
 
 
 @dataclass
 class Task:
-    id: str = field(
-        default_factory=lambda: str(uuid4())
-    )
+    id: str = field(default_factory=lambda: str(uuid4()))
 
     description: str = ""
 
@@ -21,12 +22,8 @@ class Task:
 
     generated_tests: str = ""
 
-    status: TaskStatus = (
-        TaskStatus.NEW
-    )
+    recommendation: ReviewDecision = ReviewDecision.UNKNOWN
 
-    created_at: str = field(
-        default_factory=lambda: datetime.now(
-            UTC
-        ).isoformat()
-    )
+    status: TaskStatus = TaskStatus.NEW
+
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())

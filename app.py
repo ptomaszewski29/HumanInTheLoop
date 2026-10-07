@@ -99,11 +99,23 @@ if st.session_state.task:
 
         if task.architecture_review:
 
-            st.progress(
-                task.architecture_score / 100,
-                text=f"Architecture score: "
-                f"{task.architecture_score}/100",
-            )
+            score_column, decision_column = st.columns(2)
+
+            with score_column:
+
+                st.metric(
+                    "Architecture score",
+                    f"{task.architecture_score}/100",
+                )
+
+            with decision_column:
+
+                st.metric(
+                    "Recommendation",
+                    task.recommendation.value,
+                )
+
+            st.progress(task.architecture_score / 100)
 
             st.markdown(task.architecture_review)
 

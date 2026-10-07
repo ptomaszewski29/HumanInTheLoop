@@ -42,7 +42,14 @@ class WorkflowOrchestrator:
             generated_code,
         )
 
-        print(architecture_review.to_markdown())
+        print(f"score: {architecture_review.score}/100")
+
+        print(
+            f"recommendation: "
+            f"{architecture_review.recommendation.value}"
+        )
+
+        print(architecture_review.review)
 
         print("=" * 80)
         print("QA")
@@ -55,9 +62,10 @@ class WorkflowOrchestrator:
         task = Task(
             description=task_description,
             generated_code=generated_code,
-            architecture_review=architecture_review.to_markdown(),
+            architecture_review=architecture_review.review,
             generated_tests=generated_tests,
             architecture_score=architecture_review.score,
+            recommendation=architecture_review.recommendation,
             status=TaskStatus.WAITING_FOR_APPROVAL,
         )
 
@@ -71,10 +79,7 @@ class WorkflowOrchestrator:
 
         print(f"score: " f"{task.architecture_score}/100")
 
-        print(
-            f"recommendation: "
-            f"{architecture_review.recommendation.value}"
-        )
+        print(f"recommendation: " f"{task.recommendation.value}")
 
         print(f"tests length: " f"{len(task.generated_tests)}")
 

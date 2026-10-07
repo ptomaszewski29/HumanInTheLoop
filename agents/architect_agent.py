@@ -1,12 +1,12 @@
 import re
 
-from models.architecture_recommendation import (
-    ArchitectureRecommendation,
-)
 from models.architecture_review import (
     ArchitectureReview,
 )
 from services.llm_factory import LLMFactory
+from workflows.review_decision import (
+    ReviewDecision,
+)
 
 SCORE_PATTERN = re.compile(
     r"SCORE\s*:\s*(\d{1,3})",
@@ -89,9 +89,9 @@ Rules:
         """
 
         return ArchitectureReview(
-            review=self.parse_review(result),
             score=self.parse_score(result),
             recommendation=self.parse_recommendation(result),
+            review=self.parse_review(result),
         )
 
     def parse_score(
@@ -112,14 +112,14 @@ Rules:
     def parse_recommendation(
         self,
         result: str,
-    ) -> ArchitectureRecommendation:
+    ) -> ReviewDecision:
 
         match = RECOMMENDATION_PATTERN.search(result)
 
         if match is None:
-            return ArchitectureRecommendation.UNKNOWN
+            return ReviewDecision.UNKNOWN
 
-        return ArchitectureRecommendation(
+        return ReviewDecision(
             match.group(1).upper()
         )
 

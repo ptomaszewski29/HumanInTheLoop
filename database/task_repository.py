@@ -3,6 +3,9 @@ import sqlite3
 from config.settings import Settings
 from models.task import Task
 from models.task_status import TaskStatus
+from workflows.review_decision import (
+    ReviewDecision,
+)
 
 
 class TaskRepository:
@@ -28,10 +31,34 @@ class TaskRepository:
                 architecture_review TEXT NOT NULL,
                 architecture_score INTEGER NOT NULL,
                 generated_tests TEXT NOT NULL,
+                recommendation TEXT NOT NULL DEFAULT 'UNKNOWN',
                 status TEXT NOT NULL,
                 created_at TEXT NOT NULL
             )
             """)
+
+        self.connection.commit()
+
+        self.migrate()
+
+    def migrate(self) -> None:
+        """Add columns missing from tables created by older versions."""
+
+        cursor = self.connection.cursor()
+
+        columns = {
+            row[1]
+            for row in cursor.execute(
+                "PRAGMA table_info(tasks)"
+            )
+        }
+
+        if "recommendation" not in columns:
+            cursor.execute("""
+                ALTER TABLE tasks
+                ADD COLUMN recommendation TEXT NOT NULL
+                DEFAULT 'UNKNOWN'
+                """)
 
         self.connection.commit()
 
@@ -63,10 +90,11 @@ class TaskRepository:
                 architecture_review,
                 architecture_score,
                 generated_tests,
+                recommendation,
                 status,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 task.id,
@@ -75,6 +103,7 @@ class TaskRepository:
                 task.architecture_review,
                 task.architecture_score,
                 task.generated_tests,
+                task.recommendation.value,
                 task.status.value,
                 task.created_at,
             ),
@@ -116,6 +145,7 @@ class TaskRepository:
                 architecture_review,
                 architecture_score,
                 generated_tests,
+                recommendation,
                 status,
                 created_at
             FROM tasks
@@ -133,8 +163,9 @@ class TaskRepository:
                     architecture_review=row[3],
                     architecture_score=row[4],
                     generated_tests=row[5],
-                    status=TaskStatus(row[6]),
-                    created_at=row[7],
+                    recommendation=ReviewDecision(row[6]),
+                    status=TaskStatus(row[7]),
+                    created_at=row[8],
                 )
             )
 
@@ -155,6 +186,7 @@ class TaskRepository:
                 architecture_review,
                 architecture_score,
                 generated_tests,
+                recommendation,
                 status,
                 created_at
             FROM tasks
@@ -173,8 +205,9 @@ class TaskRepository:
             architecture_review=row[3],
             architecture_score=row[4],
             generated_tests=row[5],
-            status=TaskStatus(row[6]),
-            created_at=row[7],
+            recommendation=ReviewDecision(row[6]),
+            status=TaskStatus(row[7]),
+            created_at=row[8],
         )
 
         print("=" * 80)
