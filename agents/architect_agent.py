@@ -1,12 +1,11 @@
-from services.gemini_service import GeminiService
+from services.llm_factory import LLMFactory
 
 
 class ArchitectAgent:
     def __init__(
         self,
     ) -> None:
-
-        self.gemini = GeminiService()
+        self.llm = LLMFactory.create()
 
     def execute(
         self,
@@ -15,28 +14,19 @@ class ArchitectAgent:
     ) -> str:
 
         prompt = f"""
-You are a Senior Software Architect.
-
-Review the following TypeScript code.
-
-Task:
-{task_description}
+Review this TypeScript code in one sentence.
 
 Code:
+
 {generated_code}
-
-Provide:
-
-Architecture Score: X/10
-
-Strengths:
-- ...
-
-Issues:
-- ...
-
-Recommendations:
-- ...
 """
 
-        return self.gemini.generate_text(prompt)
+        result = self.llm.generate_text(prompt)
+
+        print("=" * 80)
+        print("ARCHITECT RAW RESULT")
+        print("=" * 80)
+        print(repr(result))
+        print("=" * 80)
+
+        return result

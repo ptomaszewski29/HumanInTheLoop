@@ -426,3 +426,268 @@ Commit
         ↓
 Pull Request
 ```
+
+# 👑 Human In The Loop
+
+## Current State
+
+Status: 🚧 Sprint 3 In Progress
+
+Date: 2026-10-06
+
+---
+
+# What Works
+
+## Core Application
+
+- [x] Streamlit UI
+- [x] SQLite persistence
+- [x] Task history
+- [x] Task loading
+- [x] Task status updates
+
+## Domain Model
+
+- [x] Task
+- [x] TaskStatus
+- [x] TaskRepository
+
+## Agent Layer
+
+- [x] DeveloperAgent
+- [x] ArchitectAgent
+- [x] QAAgent
+
+## Workflow
+
+- [x] WorkflowOrchestrator
+- [x] Human Approval Workflow
+
+## LLM Providers
+
+- [x] GeminiService
+- [x] OllamaService
+- [x] LLMFactory
+- [x] Provider abstraction
+
+---
+
+# Current Architecture
+
+```text
+Task
+ ↓
+WorkflowOrchestrator
+ ↓
+DeveloperAgent
+ ↓
+ArchitectAgent
+ ↓
+QAAgent
+ ↓
+Task
+ ↓
+SQLite
+ ↓
+Streamlit UI
+```
+
+---
+
+# Verified Working Components
+
+## Ollama
+
+Verified:
+
+- [x] Ollama installed
+- [x] Local endpoint works
+- [x] Qwen model loaded
+- [x] generate_text() returns responses
+
+## Developer Agent
+
+Verified:
+
+- [x] Generates TypeScript code
+- [x] Returns non-empty response
+
+Example result:
+
+```typescript
+function validateEmail(email: string): boolean {
+  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+  return emailRegex.test(email);
+}
+```
+
+---
+
+# Known Problems
+
+## ArchitectAgent
+
+Current state:
+
+- Prompt executes
+- Ollama responds
+- Review generation unstable
+
+Observed behavior:
+
+```text
+"Please provide the TypeScript code you'd like reviewed."
+```
+
+Need further debugging.
+
+---
+
+## QAAgent
+
+Current state:
+
+- Agent exists
+- Workflow integration exists
+
+Not yet verified end-to-end.
+
+---
+
+## Database
+
+Current schema:
+
+```sql
+tasks
+```
+
+Columns:
+
+- id
+- description
+- generated_code
+- architecture_review
+- architecture_score
+- generated_tests
+- status
+- created_at
+
+---
+
+# Next Task
+
+## Debug ArchitectAgent
+
+Goal:
+
+Verify complete flow:
+
+```text
+Developer
+ ↓
+Generated Code
+ ↓
+Architect
+ ↓
+Architecture Review
+```
+
+Acceptance criteria:
+
+- architecture_review populated
+- review visible in UI
+
+---
+
+# After ArchitectAgent Works
+
+## Verify QAAgent
+
+Goal:
+
+```text
+Generated Code
+ ↓
+QAAgent
+ ↓
+Vitest Tests
+```
+
+Acceptance criteria:
+
+- tests generated
+- tests saved to SQLite
+- tests displayed in UI
+
+---
+
+# Sprint 3 Completion Criteria
+
+Workflow:
+
+```text
+Task
+ ↓
+DeveloperAgent
+ ↓
+ArchitectAgent
+ ↓
+QAAgent
+ ↓
+SQLite
+ ↓
+UI
+```
+
+All outputs visible:
+
+- [ ] Code
+- [ ] Architecture Review
+- [ ] Tests
+
+---
+
+# Future Work
+
+## Sprint 4
+
+Workflow Orchestration Improvements
+
+- [ ] Graph based execution
+- [ ] Agent feedback loop
+- [ ] Architect -> Developer corrections
+
+Target:
+
+```text
+Architect
+ ↓
+Developer
+ ↓
+Architect
+ ↓
+QA
+ ↓
+Human
+```
+
+---
+
+## Sprint 5
+
+LangGraph
+
+- [ ] Graph State
+- [ ] Nodes
+- [ ] Human Checkpoint
+
+---
+
+## Sprint 6
+
+Repository Management
+
+- [ ]

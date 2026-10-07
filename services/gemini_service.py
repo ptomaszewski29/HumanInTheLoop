@@ -2,6 +2,10 @@ import os
 
 import google.generativeai as genai
 
+from config.settings import (
+    Settings,
+)
+
 
 class GeminiService:
     def __init__(
@@ -16,8 +20,10 @@ class GeminiService:
             api_key=api_key
         )
 
-        self.model = genai.GenerativeModel(
-            "gemini-3.8-flash"
+        self.model = (
+            genai.GenerativeModel(
+                Settings.GEMINI_MODEL
+            )
         )
 
     def generate_code(
@@ -55,8 +61,10 @@ Task:
         prompt: str,
     ) -> str:
 
-        response = self.model.generate_content(
-            prompt
+        response = (
+            self.model.generate_content(
+                prompt
+            )
         )
 
         return response.text

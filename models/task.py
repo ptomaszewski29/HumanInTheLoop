@@ -19,7 +19,11 @@ class Task:
 
     architecture_score: int = 0
 
-    status: TaskStatus = TaskStatus.NEW
+    generated_tests: str = ""
+
+    status: TaskStatus = (
+        TaskStatus.NEW
+    )
 
     created_at: str = field(
         default_factory=lambda: datetime.now(

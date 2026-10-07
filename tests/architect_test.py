@@ -1,33 +1,26 @@
-from dotenv import load_dotenv
-
 from agents.architect_agent import (
     ArchitectAgent,
 )
 
-load_dotenv()
-
 agent = ArchitectAgent()
 
-task = """
-Create email validation utility.
-"""
-
-code = """
-export function validateEmail(
+review = agent.execute(
+    "Create email validator",
+    """
+function validateEmail(
     email: string
 ): boolean {
-    return email.includes("@");
-}
-"""
+    const emailRegex =
+        /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
-review = agent.execute(
-    task,
-    code,
+    return emailRegex.test(email);
+}
+""",
 )
 
 print()
 print("=" * 80)
 print("ARCHITECT REVIEW")
 print("=" * 80)
-print(review)
+print(repr(review))
 print("=" * 80)
