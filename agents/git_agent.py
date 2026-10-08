@@ -165,8 +165,11 @@ class GitAgent:
 
         service.require_repository()
 
+        # Start from the base branch so task branches do
+        # not stack on one another.
         branch = service.checkout_new_branch(
-            branch_name(task.id)
+            branch_name(task.id),
+            service.base_branch(),
         )
 
         service.add(

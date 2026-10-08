@@ -76,6 +76,10 @@ TIMEOUT_SECONDS = 60
 # A push waits on the network, so it gets longer.
 PUSH_TIMEOUT_SECONDS = 180
 
+# Where a task branch should start, in order of
+# preference.
+BASE_BRANCH_CANDIDATES = ("main", "master")
+
 # A leading dash would reach git as a flag, not a name.
 VALID_REMOTE = re.compile(
     r"^[A-Za-z0-9_][A-Za-z0-9._-]{0,99}$"
@@ -274,7 +278,27 @@ class GitService:
 
         return True
 
-    def checkout_new_branch(self, name: str) -> str:
+    def base_branch(self) -> str:
+        """The branch new work should start from.
+
+        Without one, every task branch would be cut from
+        whichever branch the last task left checked out,
+        so they would stack and each pull request would
+        carry the previous task's commits.
+        """
+
+        for candidate in BASE_BRANCH_CANDIDATES:
+
+            if self.branch_exists(candidate):
+                return candidate
+
+        return ""
+
+    def checkout_new_branch(
+        self,
+        name: str,
+        start_point: str = "",
+    ) -> str:
         """Creates the branch, or switches to it if it exists."""
 
         if not is_valid_branch(name):
@@ -283,10 +307,38 @@ class GitService:
             )
 
         if self.branch_exists(name):
+
             self._run("checkout", name)
 
-        else:
-            self._run("checkout", "-b", name)
+            return name
+
+        if start_point and start_point != name:
+
+            if not is_valid_branch(start_point):
+                raise GitError(
+                    f"Invalid start point: {start_point!r}"
+                )
+
+            try:
+                self._run(
+                    "checkout",
+                    "-b",
+                    name,
+                    start_point,
+                )
+
+                return name
+
+            except GitError as error:
+                # A dirty tree can block the switch. Carry
+                # on from where we are rather than losing
+                # the generated files.
+                print(
+                    f"could not branch from "
+                    f"{start_point}: {error}"
+                )
+
+        self._run("checkout", "-b", name)
 
         return name
 

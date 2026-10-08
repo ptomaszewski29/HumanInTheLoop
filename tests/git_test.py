@@ -424,6 +424,123 @@ check(
 
 print()
 print("=" * 80)
+print("TASK BRANCHES DO NOT STACK ON ONE ANOTHER")
+print("=" * 80)
+
+based = tempfile.mkdtemp()
+
+for arguments in (
+    ["init", "-b", "main"],
+    ["config", "user.email", "test@example.com"],
+    ["config", "user.name", "Test"],
+):
+    git(based, *arguments)
+
+with open(
+    os.path.join(based, "readme.md"),
+    "w",
+    encoding="utf-8",
+) as handle:
+    handle.write("base\n")
+
+git(based, "add", "-A")
+
+git(based, "commit", "-m", "base")
+
+check(
+    "the base branch is found",
+    GitService(based).base_branch(),
+    "main",
+)
+
+branches = []
+
+for name in ("alpha", "beta"):
+
+    relative = f"src/{name}.ts"
+
+    full = os.path.join(
+        based,
+        relative.replace("/", os.sep),
+    )
+
+    os.makedirs(
+        os.path.dirname(full),
+        exist_ok=True,
+    )
+
+    with open(full, "w", encoding="utf-8") as handle:
+        handle.write(f"export class {name.title()} {{}}")
+
+    one = Task(
+        repository_path=based,
+        description=f"Create {name}.",
+        architecture_score=95,
+        recommendation=ReviewDecision.APPROVE,
+        generated_files=[
+            GeneratedFile(relative, FileType.SOURCE),
+        ],
+        status=TaskStatus.APPROVED,
+    )
+
+    branches.append(GitAgent.execute(one).branch_name)
+
+main_tip = git(based, "rev-parse", "main").stdout.strip()
+
+for branch in branches:
+
+    check(
+        f"{branch} starts at the base",
+        git(based, "rev-parse", f"{branch}^").stdout.strip(),
+        main_tip,
+    )
+
+    check(
+        f"{branch} adds one commit only",
+        git(
+            based,
+            "rev-list",
+            "--count",
+            f"main..{branch}",
+        ).stdout.strip(),
+        "1",
+    )
+
+    check(
+        f"{branch} carries no other task's file",
+        len(
+            git(
+                based,
+                "diff",
+                "--name-only",
+                "main",
+                branch,
+            ).stdout.split()
+        ),
+        1,
+    )
+
+check(
+    "the base is left alone",
+    git(
+        based,
+        "rev-list",
+        "--count",
+        "main",
+    ).stdout.strip(),
+    "1",
+)
+
+refuses(
+    "a start point git would read as a flag",
+    lambda: GitService(based).checkout_new_branch(
+        "feature/task-x",
+        "--force",
+    ),
+)
+
+print()
+print("=" * 80)
 print("ONLY ONE REMOTE OPERATION IS ALLOWED")
 print("=" * 80)
 
