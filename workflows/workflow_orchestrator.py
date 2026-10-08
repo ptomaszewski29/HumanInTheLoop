@@ -1,6 +1,7 @@
 from agents.architect_agent import ArchitectAgent
 from agents.developer_agent import DeveloperAgent
 from agents.qa_agent import QAAgent
+from agents.test_execution_agent import TestExecutionAgent
 from config.settings import Settings
 from models.file_generation_result import (
     FileGenerationResult,
@@ -99,6 +100,65 @@ class WorkflowOrchestrator:
             source_files + test_files,
         )
 
+        # Run what was just generated. A failure sends the
+        # files back; a missing toolchain does not, because
+        # the developer cannot install one.
+        test_result = TestExecutionAgent.execute(
+            repository_path
+        )
+
+        attempts = 0
+
+        while (
+            test_result.blocks_delivery
+            and attempts < Settings.MAX_TEST_LOOPS
+        ):
+
+            attempts += 1
+
+            source_files = self.developer.improve(
+                task_description,
+                source_files,
+                TestExecutionAgent.fix_brief(
+                    test_result,
+                    source_files,
+                    test_files,
+                ),
+            )
+
+            architecture_review = self.architect.execute(
+                task_description,
+                source_files,
+                review_history,
+            )
+
+            review_iterations += 1
+
+            review_history.append(
+                ReviewHistory(
+                    iteration=review_iterations,
+                    score=architecture_review.score,
+                    recommendation=architecture_review.recommendation,
+                    review=architecture_review.review,
+                    resolved=architecture_review.resolved,
+                    blockers=architecture_review.blockers,
+                    warnings=architecture_review.warnings,
+                    suggestions=architecture_review.suggestions,
+                    structural=architecture_review.structural,
+                )
+            )
+
+            test_files = self.qa.execute(source_files)
+
+            generated_files = self.write_files(
+                repository_path,
+                source_files + test_files,
+            )
+
+            test_result = TestExecutionAgent.execute(
+                repository_path
+            )
+
         # What a reviewer will be asked to approve. Read
         # only: the files are already on disk, so this
         # compares them with what git has recorded.
@@ -121,6 +181,7 @@ class WorkflowOrchestrator:
             review_iterations=review_iterations,
             review_history=review_history,
             generated_files=generated_files,
+            test_result=test_result,
             diffs=diffs,
             status=TaskStatus.WAITING_FOR_APPROVAL,
         )

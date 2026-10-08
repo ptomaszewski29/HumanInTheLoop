@@ -17,6 +17,8 @@ QA                            writes the tests
   ↓
 Generated Files               written into the repository
   ↓
+Test Execution                the suite is run; failures send work back
+  ↓
 Diff Review                   what would change, read from git
   ↓
 HUMAN APPROVAL                nothing below here is automatic
@@ -75,6 +77,28 @@ Iteration 1   score 60   3 structural, 1 blocker    REQUEST_CHANGES
 Iteration 2   score 90   0 structural, 1 blocker    REQUEST_CHANGES
 Iteration 3   score 95   0 structural, 0 blockers   APPROVE
 ```
+
+---
+
+## The test gate
+
+After the files are written, the generated Vitest suite is run.
+
+| Outcome | What happens |
+|---|---|
+| all pass | the task continues to the human |
+| some fail | the files go back to the Developer with the failures |
+| the run crashes | same: the Developer is told it did not complete |
+| node or vitest missing | the gate is skipped and says so loudly |
+
+The last row is a deliberate departure from treating every failure the
+same. A missing toolchain is not something the Developer can fix by
+rewriting code, so looping would burn review rounds for nothing. The task
+proceeds, and the UI says plainly that you are reviewing untested code.
+
+`MAX_TEST_LOOPS` bounds the retries. Each one repeats the Developer,
+Architect and QA stages, so it is expensive on a local model; the default
+is one.
 
 ---
 

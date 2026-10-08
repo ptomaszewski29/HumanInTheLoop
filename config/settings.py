@@ -40,6 +40,20 @@ class Settings:
     MAX_REVIEW_LOOPS = 3
 
     # =====================
+    # TEST EXECUTION
+    # =====================
+
+    # The only place generated code is executed.
+    ENABLE_TEST_EXECUTION = True
+
+    TEST_TIMEOUT = 300
+
+    # How often failing tests may send work back. Each
+    # attempt repeats the whole review loop, so this is
+    # expensive on a local model.
+    MAX_TEST_LOOPS = 1
+
+    # =====================
     # UI
     # =====================
 

@@ -11,6 +11,7 @@ from models.review_history import (
     ReviewHistory,
 )
 from models.task_status import TaskStatus
+from models.test_result import TestResult
 from workflows.review_decision import (
     ReviewDecision,
 )
@@ -62,6 +63,10 @@ class Task:
 
     pull_request: PullRequestInfo = field(
         default_factory=PullRequestInfo
+    )
+
+    test_result: TestResult = field(
+        default_factory=TestResult
     )
 
     # What the reviewer was shown before approving.

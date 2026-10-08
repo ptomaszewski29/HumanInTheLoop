@@ -77,6 +77,23 @@ proportionally more time; it does not make the model smarter.
 in the reasoning field and return an empty response; the error message says
 so if it happens.
 
+**`ENABLE_TEST_EXECUTION`** — whether the generated Vitest suite is run.
+This is the only place the platform executes code it did not write; see
+[SECURITY.md](SECURITY.md). Set it to `False` to skip the gate entirely.
+
+**`MAX_TEST_LOOPS`** — how often failing tests may send work back. Each
+attempt repeats the Developer, Architect and QA stages, so one retry on a
+local model already costs several minutes. Default 1.
+
+### Running the generated tests
+
+The gate needs node on PATH and vitest installed **in the target
+repository**: a `package.json` with vitest in its dependencies, and
+`npm install` already run there. Nothing is installed automatically.
+
+Without that the gate reports `UNAVAILABLE`, the task continues, and the UI
+says you are reviewing untested code.
+
 ### Switching to Gemini
 
 Set `LLM_PROVIDER = LLMProvider.GEMINI` and put `GEMINI_API_KEY` in `.env`.

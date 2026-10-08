@@ -26,6 +26,8 @@ QA
   ↓
 Generated Files
   ↓
+Test Execution       ← the generated tests are actually run
+  ↓
 Diff Review          ← you read what would change
   ↓
 Human Approval       ← nothing below this line happens without it
@@ -140,7 +142,7 @@ Seven tabs:
 | 🏛 Architecture Review | design findings only: coupling, abstractions, SOLID |
 | 🏗 Structural Findings | broken imports, missing files, cycles, unmet requirements |
 | 📜 Review History | every review round, with what was resolved |
-| 🧪 Tests | the generated test files |
+| 🧪 Tests | the test run, then the generated test files |
 | 📂 Generated Files | every written file, read back from disk |
 | 🔍 Diff Review | what these files would change in the repository |
 
@@ -324,8 +326,5 @@ well it does that varies.
 
 **Deleting a repository does not delete its tasks.** They reconnect by path
 if you add the same folder again.
-
-**Nothing runs the generated tests.** QA writes a Vitest suite; nobody
-executes it.
 
 **Running a whole plan blocks the UI** until every task finishes.

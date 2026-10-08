@@ -19,6 +19,7 @@ from models.pull_request_info import PullRequestState
 from models.repository import Repository
 from models.task import Task
 from models.task_status import TaskStatus
+from models.test_result import TestStatus
 from services.file_writer import FileWriter
 from services.git_diff_service import GitDiffService
 from services.git_service import GitError, GitService
@@ -624,6 +625,31 @@ if st.session_state.task:
             len(task.suggestions),
         )
 
+    if task.test_result.status == TestStatus.FAILED:
+
+        st.error(
+            f"🧪 Tests FAILED — {task.test_result.summary}"
+        )
+
+    elif task.test_result.status == TestStatus.ERROR:
+
+        st.error(
+            "🧪 The test run did not complete."
+        )
+
+    elif task.test_result.status == TestStatus.PASSED:
+
+        st.success(
+            f"🧪 Tests PASSED — {task.test_result.summary}"
+        )
+
+    elif task.test_result.status == TestStatus.UNAVAILABLE:
+
+        st.warning(
+            "🧪 Tests were not run — you are reviewing "
+            "untested code."
+        )
+
     if task.structural:
 
         st.error(
@@ -767,6 +793,60 @@ if st.session_state.task:
             st.info("No review history.")
 
     with tab_tests:
+
+        st.subheader("🧪 Test Execution")
+
+        result = task.test_result
+
+        if result.status == TestStatus.NOT_RUN:
+
+            st.info("The tests were never run.")
+
+        elif result.status == TestStatus.UNAVAILABLE:
+
+            st.warning(result.output)
+
+        else:
+
+            if result.passed:
+                st.success("PASS")
+            else:
+                st.error(result.status.value)
+
+            (
+                test_1,
+                test_2,
+                test_3,
+                test_4,
+            ) = st.columns(4)
+
+            with test_1:
+                st.metric("Total", result.total_tests)
+
+            with test_2:
+                st.metric("Passed", result.passed_tests)
+
+            with test_3:
+                st.metric("Failed", result.failed_tests)
+
+            with test_4:
+                st.metric(
+                    "Duration",
+                    f"{result.duration_seconds:.1f}s",
+                )
+
+            if result.executed_at:
+                st.caption(
+                    f"Executed: {result.executed_at[:19]}"
+                )
+
+            with st.expander(
+                "Test output",
+                expanded=not result.passed,
+            ):
+                st.code(result.output, language="text")
+
+        st.divider()
 
         if task.generated_files:
 

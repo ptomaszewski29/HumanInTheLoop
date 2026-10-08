@@ -23,6 +23,7 @@ In practice:
 | Is there a dependency cycle? | Is the naming clear? |
 | Does a blocker exist, so what is the recommendation? | What counts as a blocker? |
 | In what order do planned tasks run? | How should the epic be split? |
+| Do the generated tests pass? | What should the tests assert? |
 | Which file does a path belong to? | What should the file contain? |
 
 ---
@@ -96,6 +97,20 @@ Same JSON contract and same single-file fallback as the Developer.
 
 Owns: the tests.
 
+### TestExecutionAgent — `agents/test_execution_agent.py`
+
+Runs the generated Vitest suite and reports what happened. It judges
+nothing: the workflow acts on the status.
+
+A failure or a crash sends the files back to the Developer with the test
+output. A missing toolchain does not, because rewriting code cannot install
+node.
+
+This is the only place the platform executes code it did not write; the
+limits are in [SECURITY.md](SECURITY.md).
+
+Owns: whether the generated code actually works.
+
 ### GitAgent — `agents/git_agent.py`
 
 Creates the branch, stages exactly the files the task generated, commits,
@@ -154,6 +169,7 @@ its own test.
 | `file_writer` | writes inside the repository, and nowhere else |
 | `file_naming` | derives repository paths from the generated code |
 | `file_bundle` | renders a file set for prompts and display |
+| `test_runner` | runs vitest, reads its summary, under a timeout |
 | `git_service` | local and remote git, behind an allow list |
 | `git_diff_service` | what the generated files would change |
 | `github_service` | four GitHub calls, behind an allow list |
@@ -183,6 +199,8 @@ runs on startup, so an older database keeps working.
 
 ```text
 Planner → Developer → Architect ⇄ Validator → QA → Files
+                          ↑                          ↓
+                          └──── failing tests ── Test Gate
                                                      ↓
                                               Diff Review
                                                      ↓

@@ -17,6 +17,7 @@ from models.pull_request_info import (
 from models.review_history import ReviewHistory
 from models.task import Task
 from models.task_status import TaskStatus
+from models.test_result import TestResult, TestStatus
 from workflows.review_decision import (
     ReviewDecision,
 )
@@ -41,6 +42,7 @@ COLUMNS = (
     "git_operation",
     "git_push",
     "pull_request",
+    "test_result",
     "diffs",
     "status",
     "created_at",
@@ -66,6 +68,7 @@ ADDED_COLUMNS = {
     "git_operation": "TEXT NOT NULL DEFAULT '{}'",
     "git_push": "TEXT NOT NULL DEFAULT '{}'",
     "pull_request": "TEXT NOT NULL DEFAULT '{}'",
+    "test_result": "TEXT NOT NULL DEFAULT '{}'",
     "diffs": "TEXT NOT NULL DEFAULT '[]'",
 }
 
@@ -106,6 +109,7 @@ class TaskRepository:
                 git_operation TEXT NOT NULL DEFAULT '{}',
                 git_push TEXT NOT NULL DEFAULT '{}',
                 pull_request TEXT NOT NULL DEFAULT '{}',
+                test_result TEXT NOT NULL DEFAULT '{}',
                 diffs TEXT NOT NULL DEFAULT '[]',
                 status TEXT NOT NULL,
                 created_at TEXT NOT NULL
@@ -196,6 +200,17 @@ class TaskRepository:
             }
         )
 
+        test_result_json = json.dumps(
+            {
+                "status": task.test_result.status.value,
+                "total_tests": task.test_result.total_tests,
+                "failed_tests": task.test_result.failed_tests,
+                "duration_seconds": task.test_result.duration_seconds,
+                "output": task.test_result.output,
+                "executed_at": task.test_result.executed_at,
+            }
+        )
+
         diffs_json = json.dumps(
             [
                 {
@@ -237,6 +252,7 @@ class TaskRepository:
                 git_operation_json,
                 git_push_json,
                 pull_request_json,
+                test_result_json,
                 diffs_json,
                 task.status.value,
                 task.created_at,
@@ -462,6 +478,30 @@ class TaskRepository:
             error=data.get("error", ""),
         )
 
+    def _parse_test_result(
+        self,
+        test_result_json: str,
+    ) -> TestResult:
+        data = json.loads(test_result_json or "{}")
+
+        if not data:
+            return TestResult()
+
+        return TestResult(
+            status=TestStatus.parse(
+                data.get("status", "")
+            ),
+            total_tests=int(data.get("total_tests") or 0),
+            failed_tests=int(
+                data.get("failed_tests") or 0
+            ),
+            duration_seconds=float(
+                data.get("duration_seconds") or 0.0
+            ),
+            output=data.get("output", ""),
+            executed_at=data.get("executed_at", ""),
+        )
+
     def _parse_diffs(
         self,
         diffs_json: str,
@@ -507,9 +547,10 @@ class TaskRepository:
             git_operation=self._parse_git_operation(row[16]),
             git_push=self._parse_git_push(row[17]),
             pull_request=self._parse_pull_request(row[18]),
-            diffs=self._parse_diffs(row[19]),
-            status=TaskStatus(row[20]),
-            created_at=row[21],
+            test_result=self._parse_test_result(row[19]),
+            diffs=self._parse_diffs(row[20]),
+            status=TaskStatus(row[21]),
+            created_at=row[22],
         )
 
     def get_all(

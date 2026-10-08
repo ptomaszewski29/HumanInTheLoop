@@ -79,6 +79,33 @@ readable error instead of hanging the app on a prompt nobody can see.
 
 ---
 
+## Executing generated code
+
+The test gate is the only place the platform runs code it did not write.
+That is a different risk from writing a file, so the surface is small on
+purpose:
+
+- **one fixed command**, built in code: `node
+  <repo>/node_modules/vitest/vitest.mjs run`
+- **never through a shell**, so nothing in a generated filename or test
+  body can be interpreted as a command
+- **the vitest already installed in the repository**, invoked directly.
+  `npx` is not used, because it would happily download a package on behalf
+  of a generated file. If vitest is not installed, the gate reports that
+  and runs nothing.
+- **inside the repository folder**, as the working directory
+- **under a timeout** (`TEST_TIMEOUT`, 300 seconds), after which the run is
+  stopped and reported as an error
+
+What this does **not** do is sandbox the code. A generated test runs with
+your user's permissions and can read and write what you can. Point the
+platform at a sandbox repository, not at a machine you would not run an
+unreviewed npm package on.
+
+The gate can be switched off entirely: `ENABLE_TEST_EXECUTION = False`.
+
+---
+
 ## GitHub
 
 `services/github_service.py` matches on method **and** path. Four calls
@@ -149,4 +176,6 @@ Honest limits:
   files and imports are matched against known phrasings; a new wording
   could slip through into the review as noise. It cannot cause a wrong
   *decision*, because the recommendation comes from the validator.
-- **Nothing sandboxes the generated code.** It is written to disk, not run.
+- **Nothing sandboxes the generated code.** The test gate runs it with your
+  user's permissions. The command is fixed and shell-free, but the test
+  body is not.

@@ -59,6 +59,18 @@ paths are rejected rather than rewritten. A truncated answer keeps the
 entries it finished. Files are written, folders created, existing files
 overwritten. Rows written before the `CODE` → `source` rename still load.
 
+### `tests.test_execution_test`
+
+Vitest output parsed from both passing and failing shapes, including
+milliseconds. A missing toolchain is `UNAVAILABLE` and does **not** send
+work back, while a real failure does. The developer brief carries the
+failure text and the tests. Results survive a restart.
+
+The real execution path — installing vitest and running a suite that
+passes, then one that fails, then code that will not parse — is exercised
+by a scratch suite rather than this one, because it needs npm and a
+network.
+
 ### `tests.repository_test`
 
 Repository CRUD, the link between a task and its repository, and that both
