@@ -23,6 +23,9 @@ result = workflow.invoke(
         "architecture_review": "",
         "architecture_score": 0,
         "recommendation": "",
+        "blockers": [],
+        "warnings": [],
+        "suggestions": [],
         "generated_tests": "",
         "review_iterations": 0,
         "review_history": [],
@@ -39,6 +42,12 @@ for review in result["review_history"]:
     print(f"Iteration {review.iteration}")
     print(f"Score: {review.score}")
     print(f"Recommendation: {review.recommendation.value}")
+    print(
+        f"blockers={len(review.blockers)} "
+        f"warnings={len(review.warnings)} "
+        f"suggestions={len(review.suggestions)} "
+        f"resolved={len(review.resolved)}"
+    )
     print(review.review)
     print("-" * 80)
 
@@ -49,3 +58,6 @@ print("=" * 80)
 print(f"score: {result['architecture_score']}/100")
 print(f"recommendation: {result['recommendation']}")
 print(f"iterations: {result['review_iterations']}")
+print(f"blockers: {result['blockers']}")
+print(f"warnings: {result['warnings']}")
+print(f"suggestions: {result['suggestions']}")

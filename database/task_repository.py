@@ -9,6 +9,38 @@ from workflows.review_decision import (
     ReviewDecision,
 )
 
+COLUMNS = (
+    "id",
+    "description",
+    "generated_code",
+    "architecture_review",
+    "architecture_score",
+    "generated_tests",
+    "recommendation",
+    "blockers",
+    "warnings",
+    "suggestions",
+    "review_history",
+    "review_iterations",
+    "status",
+    "created_at",
+)
+
+COLUMN_LIST = ",\n                ".join(COLUMNS)
+
+PLACEHOLDERS = ", ".join("?" for _ in COLUMNS)
+
+# Columns added after the first release, with the
+# definition used to retrofit older databases.
+ADDED_COLUMNS = {
+    "recommendation": "TEXT NOT NULL DEFAULT 'UNKNOWN'",
+    "blockers": "TEXT NOT NULL DEFAULT '[]'",
+    "warnings": "TEXT NOT NULL DEFAULT '[]'",
+    "suggestions": "TEXT NOT NULL DEFAULT '[]'",
+    "review_history": "TEXT NOT NULL DEFAULT '[]'",
+    "review_iterations": "INTEGER NOT NULL DEFAULT 0",
+}
+
 
 class TaskRepository:
     def __init__(
@@ -34,6 +66,9 @@ class TaskRepository:
                 architecture_score INTEGER NOT NULL,
                 generated_tests TEXT NOT NULL,
                 recommendation TEXT NOT NULL DEFAULT 'UNKNOWN',
+                blockers TEXT NOT NULL DEFAULT '[]',
+                warnings TEXT NOT NULL DEFAULT '[]',
+                suggestions TEXT NOT NULL DEFAULT '[]',
                 review_history TEXT NOT NULL DEFAULT '[]',
                 review_iterations INTEGER NOT NULL DEFAULT 0,
                 status TEXT NOT NULL,
@@ -50,29 +85,14 @@ class TaskRepository:
 
         columns = {row[1] for row in cursor.execute("PRAGMA table_info(tasks)")}
 
-        if "recommendation" not in columns:
-            cursor.execute("""
-                ALTER TABLE tasks
-                ADD COLUMN recommendation
-                TEXT NOT NULL
-                DEFAULT 'UNKNOWN'
-                """)
+        for name, definition in ADDED_COLUMNS.items():
 
-        if "review_history" not in columns:
-            cursor.execute("""
-                ALTER TABLE tasks
-                ADD COLUMN review_history
-                TEXT NOT NULL
-                DEFAULT '[]'
-                """)
+            if name in columns:
+                continue
 
-        if "review_iterations" not in columns:
-            cursor.execute("""
-                ALTER TABLE tasks
-                ADD COLUMN review_iterations
-                INTEGER NOT NULL
-                DEFAULT 0
-                """)
+            cursor.execute(
+                f"ALTER TABLE tasks ADD COLUMN {name} {definition}"
+            )
 
         self.connection.commit()
 
@@ -88,6 +108,10 @@ class TaskRepository:
                     "score": item.score,
                     "recommendation": item.recommendation.value,
                     "review": item.review,
+                    "resolved": item.resolved,
+                    "blockers": item.blockers,
+                    "warnings": item.warnings,
+                    "suggestions": item.suggestions,
                 }
                 for item in task.review_history
             ]
@@ -96,22 +120,12 @@ class TaskRepository:
         cursor = self.connection.cursor()
 
         cursor.execute(
-            """
+            f"""
             INSERT INTO tasks (
-                id,
-                description,
-                generated_code,
-                architecture_review,
-                architecture_score,
-                generated_tests,
-                recommendation,
-                review_history,
-                review_iterations,
-                status,
-                created_at
+                {COLUMN_LIST}
             )
             VALUES (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                {PLACEHOLDERS}
             )
             """,
             (
@@ -122,6 +136,9 @@ class TaskRepository:
                 task.architecture_score,
                 task.generated_tests,
                 task.recommendation.value,
+                json.dumps(task.blockers),
+                json.dumps(task.warnings),
+                json.dumps(task.suggestions),
                 review_history_json,
                 task.review_iterations,
                 task.status.value,
@@ -152,6 +169,13 @@ class TaskRepository:
 
         self.connection.commit()
 
+    def _parse_findings(
+        self,
+        findings_json: str,
+    ) -> list[str]:
+
+        return json.loads(findings_json or "[]")
+
     def _parse_review_history(
         self,
         review_history_json: str,
@@ -164,84 +188,18 @@ class TaskRepository:
                 score=item["score"],
                 recommendation=ReviewDecision(item["recommendation"]),
                 review=item["review"],
+                resolved=item.get("resolved", []),
+                blockers=item.get("blockers", []),
+                warnings=item.get("warnings", []),
+                suggestions=item.get("suggestions", []),
             )
             for item in items
         ]
 
-    def get_all(
+    def _to_task(
         self,
-    ) -> list[Task]:
-
-        cursor = self.connection.cursor()
-
-        rows = cursor.execute("""
-            SELECT
-                id,
-                description,
-                generated_code,
-                architecture_review,
-                architecture_score,
-                generated_tests,
-                recommendation,
-                review_history,
-                review_iterations,
-                status,
-                created_at
-            FROM tasks
-            ORDER BY created_at DESC
-            """).fetchall()
-
-        tasks: list[Task] = []
-
-        for row in rows:
-
-            tasks.append(
-                Task(
-                    id=row[0],
-                    description=row[1],
-                    generated_code=row[2],
-                    architecture_review=row[3],
-                    architecture_score=row[4],
-                    generated_tests=row[5],
-                    recommendation=ReviewDecision(row[6]),
-                    review_history=self._parse_review_history(row[7]),
-                    review_iterations=row[8],
-                    status=TaskStatus(row[9]),
-                    created_at=row[10],
-                )
-            )
-
-        return tasks
-
-    def get_by_id(
-        self,
-        task_id: str,
-    ) -> Task | None:
-
-        cursor = self.connection.cursor()
-
-        row = cursor.execute(
-            """
-            SELECT
-                id,
-                description,
-                generated_code,
-                architecture_review,
-                architecture_score,
-                generated_tests,
-                recommendation,
-                review_history,
-                review_iterations,
-                status,
-                created_at
-            FROM tasks
-            WHERE id = ?
-            """,
-            (task_id,),
-        ).fetchone()
-
-        if row is None:
-            return None
+        row: tuple,
+    ) -> Task:
 
         return Task(
             id=row[0],
@@ -251,8 +209,48 @@ class TaskRepository:
             architecture_score=row[4],
             generated_tests=row[5],
             recommendation=ReviewDecision(row[6]),
-            review_history=self._parse_review_history(row[7]),
-            review_iterations=row[8],
-            status=TaskStatus(row[9]),
-            created_at=row[10],
+            blockers=self._parse_findings(row[7]),
+            warnings=self._parse_findings(row[8]),
+            suggestions=self._parse_findings(row[9]),
+            review_history=self._parse_review_history(row[10]),
+            review_iterations=row[11],
+            status=TaskStatus(row[12]),
+            created_at=row[13],
         )
+
+    def get_all(
+        self,
+    ) -> list[Task]:
+
+        cursor = self.connection.cursor()
+
+        rows = cursor.execute(f"""
+            SELECT
+                {COLUMN_LIST}
+            FROM tasks
+            ORDER BY created_at DESC
+            """).fetchall()
+
+        return [self._to_task(row) for row in rows]
+
+    def get_by_id(
+        self,
+        task_id: str,
+    ) -> Task | None:
+
+        cursor = self.connection.cursor()
+
+        row = cursor.execute(
+            f"""
+            SELECT
+                {COLUMN_LIST}
+            FROM tasks
+            WHERE id = ?
+            """,
+            (task_id,),
+        ).fetchone()
+
+        if row is None:
+            return None
+
+        return self._to_task(row)

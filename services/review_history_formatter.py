@@ -13,11 +13,11 @@ class ReviewHistoryFormatter:
         if not review_history:
             return "No previous reviews."
 
-        lines: list[str] = []
+        blocks: list[str] = []
 
         for review in review_history:
 
-            lines.append(f"""
+            blocks.append(f"""
 Iteration {review.iteration}
 
 Score:
@@ -26,10 +26,48 @@ Score:
 Recommendation:
 {review.recommendation.value}
 
-Review:
-{review.review}
-
+{ReviewHistoryFormatter._section("BLOCKERS", review.blockers)}
+{ReviewHistoryFormatter._section("WARNINGS", review.warnings)}
+{ReviewHistoryFormatter._section("SUGGESTIONS", review.suggestions)}
 --------------------------
 """)
 
-        return "\n".join(lines)
+        return "\n".join(blocks)
+
+    @staticmethod
+    def _section(
+        title: str,
+        findings: list[str],
+    ) -> str:
+
+        if not findings:
+            return f"{title}:\n- None\n"
+
+        lines = "\n".join(
+            f"- {finding}" for finding in findings
+        )
+
+        return f"{title}:\n{lines}\n"
+
+    @staticmethod
+    def open_findings(
+        review_history: list[ReviewHistory],
+    ) -> str:
+        """The findings the last review left open."""
+
+        if not review_history:
+            return "No previous findings."
+
+        last = review_history[-1]
+
+        return (
+            ReviewHistoryFormatter._section(
+                "BLOCKERS", last.blockers
+            )
+            + ReviewHistoryFormatter._section(
+                "WARNINGS", last.warnings
+            )
+            + ReviewHistoryFormatter._section(
+                "SUGGESTIONS", last.suggestions
+            )
+        )

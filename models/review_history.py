@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from workflows.review_decision import (
     ReviewDecision,
@@ -14,3 +14,11 @@ class ReviewHistory:
     recommendation: ReviewDecision
 
     review: str
+
+    resolved: list[str] = field(default_factory=list)
+
+    blockers: list[str] = field(default_factory=list)
+
+    warnings: list[str] = field(default_factory=list)
+
+    suggestions: list[str] = field(default_factory=list)

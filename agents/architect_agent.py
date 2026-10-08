@@ -1,5 +1,3 @@
-import re
-
 from models.architecture_review import (
     ArchitectureReview,
 )
@@ -11,6 +9,13 @@ from services.llm_factory import (
 )
 from services.review_history_formatter import (
     ReviewHistoryFormatter,
+)
+from services.review_parser import (
+    ReviewParser,
+    drop_contradictions,
+)
+from workflows.recommendation_policy import (
+    RecommendationPolicy,
 )
 from workflows.review_decision import (
     ReviewDecision,
@@ -57,67 +62,102 @@ Current Code:
 
 {generated_code}
 
-Your responsibility:
+Classify every finding by severity.
 
-1. Decide which previous findings are now resolved.
-2. Decide which previous findings are still unresolved.
-3. Identify new findings only if they really exist.
-4. Decide whether the implementation can be approved.
+BLOCKER
+Prevents the solution from meeting
+architectural, functional, security,
+reliability or maintainability
+requirements.
 
-Review the code critically. Check that
-every requirement in the task is actually
-implemented, that the code would compile
-and run, and that the stated design
-principles are really applied.
+Always a BLOCKER, with no exception:
+
+- the code would not compile or run
+- the code is incomplete, truncated, or has
+  unbalanced braces or brackets
+- the code calls or references something
+  that is not defined
+- a requirement stated in the task is not
+  implemented
+- a security vulnerability
+
+Also a BLOCKER: dependency inversion
+violations, broken abstraction boundaries,
+hard-coded infrastructure dependencies,
+invalid business logic, missing required
+interfaces, unbounded resource consumption.
+
+WARNING
+Should be fixed, but does not make the
+implementation unacceptable. For example:
+missing logging, weak naming, missing
+documentation, limited extensibility,
+non-optimal design choices.
+
+SUGGESTION
+Optional improvement. For example: pattern
+recommendations, performance ideas, code
+style, future-proofing.
 
 Rules:
 
-- If there are no previous reviews, this is
-  a first review: review the code from
-  scratch, leave Resolved Findings as
-  "None", and list every real problem you
-  find under New Findings.
-- Otherwise, take every finding listed in
-  the most recent previous review one by
-  one and decide its fate: each one goes
-  either under Resolved Findings or under
-  Remaining Findings. Never silently drop
-  a previous finding.
-- A finding is resolved as soon as the
-  current code addresses it, even if the
-  solution is not perfect. Do not repeat a
-  finding as unresolved if the current code
-  already fixes it.
-- New Findings is only for problems that no
-  previous review mentioned.
-- Raise the score when findings are resolved.
-- Recommend APPROVE only when no finding
-  blocks the task requirements. Never
-  approve code that is broken or ignores a
-  stated requirement.
-- Use REQUEST_CHANGES whenever at least one
-  blocking finding remains.
-- Reserve a score above 90 for code you
-  would merge unchanged.
-- Report "None" under a heading only when
-  that heading genuinely has no entries.
+- Anything that stops the code from
+  compiling, running, or meeting a stated
+  requirement is a BLOCKER, however small
+  the fix looks.
+- For questions of design taste and
+  polish only, when in doubt choose
+  WARNING over BLOCKER.
+- Missing logging, error handling, retries,
+  metrics and tests are WARNINGS or
+  SUGGESTIONS, never BLOCKERS, unless the
+  task explicitly asked for them.
+- "Could be more extensible" and "could be
+  more generic" are SUGGESTIONS.
+- If there are no previous reviews, review
+  the code from scratch and leave RESOLVED
+  FINDINGS as "None".
+- Otherwise take every finding from the
+  most recent previous review one by one.
+  If the current code addresses it, list it
+  under RESOLVED FINDINGS and do not repeat
+  it. If it is not addressed, list it again
+  under its severity. Never silently drop a
+  previous finding.
+- A finding counts as resolved as soon as
+  the current code addresses it, even if
+  the solution is not perfect.
+- RESOLVED FINDINGS is only for findings
+  that are genuinely fixed. Never list the
+  same finding under RESOLVED FINDINGS and
+  under a severity heading. Never write
+  "(not resolved)" or a similar note there.
+  Each finding appears under exactly one
+  heading.
+- Do not re-raise a finding you already
+  listed as resolved in an earlier review.
+- Raise the score when findings are
+  resolved.
+- Write "None" under a heading that has no
+  entries.
 
-Return exactly in this format:
+Return exactly in this format, with no
+extra commentary:
 
 SCORE: <0-100>
 
-RECOMMENDATION:
-<APPROVE|REQUEST_CHANGES|REJECT>
+RECOMMENDATION: <APPROVE|REQUEST_CHANGES|REJECT>
 
-REVIEW:
+RESOLVED FINDINGS:
+- previously raised finding that is now fixed
 
-Resolved Findings:
+BLOCKERS:
 - finding
 
-Remaining Findings:
+WARNINGS:
 - finding
 
-New Findings:
+SUGGESTIONS:
 - finding
 """
 
@@ -127,48 +167,62 @@ New Findings:
             )
         )
 
-        score_match = re.search(
-            r"SCORE:\s*(\d+)",
-            raw_review,
+        score = ReviewParser.score(raw_review)
+
+        resolved = ReviewParser.section(
+            raw_review, "resolved"
         )
 
-        recommendation_match = (
-            re.search(
-                (
-                    r"RECOMMENDATION:\s*"
-                    r"(APPROVE|REQUEST_CHANGES|REJECT)"
-                ),
-                raw_review,
-            )
+        blockers = ReviewParser.section(
+            raw_review, "blockers"
         )
 
-        score = (
-            int(score_match.group(1))
-            if score_match
-            else 0
+        warnings = ReviewParser.section(
+            raw_review, "warnings"
         )
 
-        recommendation = (
-            ReviewDecision(
-                recommendation_match.group(
-                    1
-                )
-            )
-            if recommendation_match
-            else ReviewDecision.UNKNOWN
+        suggestions = ReviewParser.section(
+            raw_review, "suggestions"
         )
 
-        review_text = (
-            raw_review.split(
-                "REVIEW:"
-            )[-1].strip()
+        # A finding cannot be resolved and open at
+        # the same time; still being open wins.
+        resolved = drop_contradictions(
+            resolved,
+            blockers + warnings + suggestions,
+        )
+
+        stated = ReviewParser.stated_recommendation(
+            raw_review
+        )
+
+        recommendation = RecommendationPolicy.decide(
+            blockers,
+            ReviewDecision(stated) if stated else None,
+        )
+
+        review_text = self._render(
+            resolved,
+            blockers,
+            warnings,
+            suggestions,
         )
 
         print("=" * 80)
         print(
-            "ARCHITECT RAW RESULT "
+            "ARCHITECT RESULT "
             f"(iteration {len(history) + 1}, "
             f"{len(history)} previous reviews)"
+        )
+        print("=" * 80)
+        print(
+            f"score={score} "
+            f"blockers={len(blockers)} "
+            f"warnings={len(warnings)} "
+            f"suggestions={len(suggestions)} "
+            f"resolved={len(resolved)} "
+            f"stated={stated} "
+            f"-> {recommendation.value}"
         )
         print("=" * 80)
         print(raw_review)
@@ -178,4 +232,39 @@ New Findings:
             score=score,
             recommendation=recommendation,
             review=review_text,
+            resolved=resolved,
+            blockers=blockers,
+            warnings=warnings,
+            suggestions=suggestions,
         )
+
+    @staticmethod
+    def _render(
+        resolved: list[str],
+        blockers: list[str],
+        warnings: list[str],
+        suggestions: list[str],
+    ) -> str:
+
+        sections = (
+            ("Resolved Findings", resolved),
+            ("Blockers", blockers),
+            ("Warnings", warnings),
+            ("Suggestions", suggestions),
+        )
+
+        parts: list[str] = []
+
+        for title, findings in sections:
+
+            if findings:
+                body = "\n".join(
+                    f"- {finding}"
+                    for finding in findings
+                )
+            else:
+                body = "- None"
+
+            parts.append(f"**{title}:**\n{body}")
+
+        return "\n\n".join(parts)

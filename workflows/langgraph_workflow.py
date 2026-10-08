@@ -7,6 +7,9 @@ from config.settings import Settings
 from models.review_history import (
     ReviewHistory,
 )
+from services.review_history_formatter import (
+    ReviewHistoryFormatter,
+)
 from workflows.graph_state import (
     GraphState,
 )
@@ -48,15 +51,15 @@ Original task:
 
 {task_description}
 
-Architect review:
+Fix every BLOCKER. Address the warnings
+only if that does not risk a blocker.
+Ignore the suggestions.
 
-{architecture_review}
+{ReviewHistoryFormatter.open_findings(state["review_history"])}
 
 Current implementation:
 
 {generated_code}
-
-Fix every remaining architect finding.
 
 Return only TypeScript code.
 """),
@@ -79,6 +82,9 @@ def architect_node(
         "architecture_review": review.review,
         "architecture_score": review.score,
         "recommendation": review.recommendation.value,
+        "blockers": review.blockers,
+        "warnings": review.warnings,
+        "suggestions": review.suggestions,
         "review_iterations": iteration,
         "review_history": [
             ReviewHistory(
@@ -86,6 +92,10 @@ def architect_node(
                 score=review.score,
                 recommendation=review.recommendation,
                 review=review.review,
+                resolved=review.resolved,
+                blockers=review.blockers,
+                warnings=review.warnings,
+                suggestions=review.suggestions,
             )
         ],
     }
@@ -106,8 +116,11 @@ def review_router(
     state: GraphState,
 ) -> str:
 
+    if state["recommendation"] == ReviewDecision.REJECT.value:
+        return "qa"
+
     if (
-        state["recommendation"] == ReviewDecision.REQUEST_CHANGES.value
+        state["blockers"]
         and state["review_iterations"] < Settings.MAX_REVIEW_LOOPS
     ):
         return "developer"

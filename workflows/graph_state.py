@@ -17,6 +17,12 @@ class GraphState(TypedDict):
 
     recommendation: str
 
+    blockers: list[str]
+
+    warnings: list[str]
+
+    suggestions: list[str]
+
     generated_tests: str
 
     review_iterations: int

@@ -7,6 +7,9 @@ from models.review_history import (
 )
 from models.task import Task
 from models.task_status import TaskStatus
+from services.review_history_formatter import (
+    ReviewHistoryFormatter,
+)
 from workflows.review_decision import (
     ReviewDecision,
 )
@@ -56,10 +59,17 @@ class WorkflowOrchestrator:
                     score=architecture_review.score,
                     recommendation=architecture_review.recommendation,
                     review=architecture_review.review,
+                    resolved=architecture_review.resolved,
+                    blockers=architecture_review.blockers,
+                    warnings=architecture_review.warnings,
+                    suggestions=architecture_review.suggestions,
                 )
             )
 
-            if architecture_review.recommendation == ReviewDecision.APPROVE:
+            # Only blockers send the code back to the
+            # developer. Warnings and suggestions are
+            # recorded and shipped with the task.
+            if not architecture_review.blockers:
                 break
 
             if architecture_review.recommendation == ReviewDecision.REJECT:
@@ -73,15 +83,15 @@ Original task:
 
 {task_description}
 
-Architect review:
+Fix every BLOCKER. Address the warnings
+only if that does not risk a blocker.
+Ignore the suggestions.
 
-{architecture_review.review}
+{ReviewHistoryFormatter.open_findings(review_history)}
 
 Current implementation:
 
 {generated_code}
-
-Fix every architect finding.
 
 Return only TypeScript code.
 """)
@@ -94,6 +104,9 @@ Return only TypeScript code.
             architecture_review=architecture_review.review,
             architecture_score=architecture_review.score,
             recommendation=architecture_review.recommendation,
+            blockers=architecture_review.blockers,
+            warnings=architecture_review.warnings,
+            suggestions=architecture_review.suggestions,
             generated_tests=generated_tests,
             review_iterations=review_iterations,
             review_history=review_history,

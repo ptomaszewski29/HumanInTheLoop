@@ -106,6 +106,33 @@ if st.session_state.task:
             task.review_iterations,
         )
 
+    (
+        metric_4,
+        metric_5,
+        metric_6,
+    ) = st.columns(3)
+
+    with metric_4:
+
+        st.metric(
+            "🚫 Blockers",
+            len(task.blockers),
+        )
+
+    with metric_5:
+
+        st.metric(
+            "⚠️ Warnings",
+            len(task.warnings),
+        )
+
+    with metric_6:
+
+        st.metric(
+            "💡 Suggestions",
+            len(task.suggestions),
+        )
+
     if task.architecture_score > 0:
 
         st.progress(task.architecture_score / 100)
@@ -158,6 +185,33 @@ if st.session_state.task:
                 st.write(f"Score: {review.score}")
 
                 st.write("Recommendation: " f"{review.recommendation.value}")
+
+                (
+                    history_1,
+                    history_2,
+                    history_3,
+                ) = st.columns(3)
+
+                with history_1:
+
+                    st.metric(
+                        "🚫 Blockers",
+                        len(review.blockers),
+                    )
+
+                with history_2:
+
+                    st.metric(
+                        "⚠️ Warnings",
+                        len(review.warnings),
+                    )
+
+                with history_3:
+
+                    st.metric(
+                        "💡 Suggestions",
+                        len(review.suggestions),
+                    )
 
                 st.markdown(review.review)
 
