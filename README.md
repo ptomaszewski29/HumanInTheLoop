@@ -2,14 +2,17 @@
 
 A multi-agent development pipeline with a human gate in the middle.
 
-You describe a task. A Developer agent writes the files, an Architect
-reviews the design, a deterministic validator checks the structure, and a
-QA agent writes the tests. Nothing reaches source control until you have
+You describe a task — or an epic, which a Planner breaks into tasks. A
+Developer agent writes the files, an Architect reviews the design, a
+deterministic validator checks the structure, and a QA agent writes the
+tests. Nothing reaches source control until you have
 read the diff and approved it. Only then does the system create a branch,
 commit, push and open a pull request.
 
 ```text
 Repository
+  ↓
+Epic  →  Planner  →  Task breakdown     (optional)
   ↓
 Task
   ↓
@@ -107,7 +110,17 @@ Point this at a sandbox, not at a project you care about: **generation
 overwrites files whose paths collide**, and you will see that afterwards in
 the Diff Review tab as `modified`.
 
-### 2. Describe a task
+### 2. Optionally, plan an epic
+
+**📋 Planner** turns an epic into between 2 and 12 tasks, each with a
+priority and a dependency list. The ordering is computed in code, so a task
+whose dependencies have not run is shown as blocked and cannot be started.
+
+Run them one at a time, or **⏩ Uruchom cały plan** to walk the whole plan in
+dependency order. Progress is saved, so you can close a plan and come back
+to it.
+
+### 3. Describe a task
 
 Write what you want and press **Generuj kod**. On a local 8B model a run
 takes roughly 5–12 minutes, depending on how many review rounds the
@@ -117,7 +130,7 @@ The loop runs at most `MAX_REVIEW_LOOPS` times. Every round the Architect
 can send the files back to the Developer; it stops as soon as no blocker
 and no structural problem remains.
 
-### 3. Read what was produced
+### 4. Read what was produced
 
 Seven tabs:
 
@@ -136,7 +149,7 @@ what cannot be checked mechanically; everything a compiler-style pass can
 decide belongs to the validator, and the Architect's claims about those
 things are filtered out.
 
-### 4. Approve
+### 5. Approve
 
 **✅ Akceptuj** marks the task approved and, when the folder is a git
 repository, creates `feature/task-<id>` and commits the generated files to
@@ -146,7 +159,7 @@ Approval never fails because of git: if the folder is not a repository or
 the commit cannot be made, the task is still approved and you are told why
 nothing was committed.
 
-### 5. Push and open a pull request
+### 6. Push and open a pull request
 
 **⬆️ Push branch** sends the branch to `origin`. **🔀 Create pull request**
 opens a PR against the repository's default branch, with a description
@@ -283,6 +296,20 @@ alternative wiring of the same agents. The Streamlit app uses
 
 ---
 
+## Documentation
+
+| Document | What it covers |
+|---|---|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | the agents, the services, who owns what |
+| [docs/WORKFLOW.md](docs/WORKFLOW.md) | the pipeline, the review loop, the severity model |
+| [docs/REPOSITORY_WORKFLOW.md](docs/REPOSITORY_WORKFLOW.md) | from folder to pull request |
+| [docs/SECURITY.md](docs/SECURITY.md) | what the agents may and may not do |
+| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | settings, `.env`, Ollama, tokens |
+| [docs/TESTING.md](docs/TESTING.md) | what each suite proves |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | what was built, and what each sprint taught |
+
+---
+
 ## Known limitations
 
 **The model is the weakest link.** A local 8B model will sometimes fix
@@ -297,3 +324,8 @@ well it does that varies.
 
 **Deleting a repository does not delete its tasks.** They reconnect by path
 if you add the same folder again.
+
+**Nothing runs the generated tests.** QA writes a Vitest suite; nobody
+executes it.
+
+**Running a whole plan blocks the UI** until every task finishes.
