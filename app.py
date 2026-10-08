@@ -4,8 +4,10 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from agents.git_agent import GitAgent
+from agents.planner_agent import PlannerAgent
 from agents.pull_request_agent import PullRequestAgent
 from config.settings import Settings
+from database.plan_repository import PlanRepository
 from database.repository_repository import (
     RepositoryRepository,
     same_path,
@@ -29,6 +31,7 @@ load_dotenv()
 orchestrator = WorkflowOrchestrator()
 repository = TaskRepository()
 repository_store = RepositoryRepository()
+plan_store = PlanRepository()
 
 if "task" not in st.session_state:
     st.session_state.task = None
@@ -40,6 +43,9 @@ if "repository_id" not in st.session_state:
 # that follows approval so the user actually sees it.
 if "git_message" not in st.session_state:
     st.session_state.git_message = None
+
+if "plan" not in st.session_state:
+    st.session_state.plan = None
 
 repositories = repository_store.get_all()
 
@@ -100,6 +106,20 @@ def show_files(root: str, files, empty_message: str) -> None:
             else:
 
                 st.code(content, language="typescript")
+
+
+def run_task(description: str, repository_id: str, path: str):
+    """One task through the whole pipeline, saved."""
+
+    generated = orchestrator.execute(
+        description,
+        repository_id,
+        path,
+    )
+
+    repository.save(generated)
+
+    return generated
 
 
 def repository_label(task_like) -> str:
@@ -216,6 +236,34 @@ with st.sidebar:
 
     st.divider()
 
+    st.header("📋 Plans")
+
+    plans = plan_store.get_all()
+
+    if not plans:
+        st.write("No plans yet.")
+
+    for plan_item in plans:
+
+        label = (
+            f"{len(plan_item.completed)}/"
+            f"{len(plan_item.tasks)} | "
+            f"{plan_item.epic[:28]}"
+        )
+
+        if st.button(
+            label,
+            key=f"plan-{plan_item.id}",
+            use_container_width=True,
+        ):
+            st.session_state.plan = plan_store.get_by_id(
+                plan_item.id
+            )
+
+            st.rerun()
+
+    st.divider()
+
     st.header("📜 Task History")
 
     tasks = repository.get_all()
@@ -256,6 +304,211 @@ else:
     st.warning(
         "Add and select a repository before creating a task."
     )
+
+st.subheader("📋 Planner")
+
+epic = st.text_area(
+    "Opisz epik, a planner rozbije go na zadania",
+    key="epic_input",
+)
+
+if st.button(
+    "Zaplanuj",
+    disabled=not st.session_state.repository_id,
+) and epic:
+
+    with st.spinner("🧠 Planner ..."):
+
+        try:
+
+            plan = PlannerAgent().execute(
+                epic,
+                st.session_state.repository_id,
+            )
+
+        except Exception as error:
+
+            st.error(f"Planner failed: {error}")
+
+            st.stop()
+
+        plan_store.save(plan)
+
+        st.session_state.plan = plan
+
+        st.rerun()
+
+if st.session_state.plan:
+
+    plan = st.session_state.plan
+
+    st.subheader("📋 Planned Tasks")
+
+    st.caption(plan.epic)
+
+    done = len(plan.completed)
+
+    st.progress(
+        done / len(plan.tasks) if plan.tasks else 0.0,
+        text=f"{done} / {len(plan.tasks)} ukończonych",
+    )
+
+    target_path = (
+        repositories_by_id[
+            st.session_state.repository_id
+        ].path
+        if st.session_state.repository_id
+        else ""
+    )
+
+    for item in plan.tasks:
+
+        blocked = plan.blocked_by(item)
+
+        if plan.is_done(item.id):
+            state = "✅"
+        elif blocked:
+            state = "⛔"
+        else:
+            state = "▶️"
+
+        with st.expander(
+            f"{state} {item.id}. {item.title} "
+            f"[{item.priority.value}]",
+            expanded=not plan.is_done(item.id)
+            and not blocked,
+        ):
+
+            if item.description:
+                st.write(item.description)
+
+            if item.dependencies:
+                st.caption(
+                    "Zależy od: "
+                    + ", ".join(
+                        str(d) for d in item.dependencies
+                    )
+                )
+
+            if blocked:
+                st.warning(
+                    "Czeka na: "
+                    + ", ".join(str(d) for d in blocked)
+                )
+
+            if plan.is_done(item.id):
+                st.success("Wykonane.")
+
+            elif st.button(
+                "▶️ Uruchom to zadanie",
+                key=f"run-{plan.id}-{item.id}",
+                disabled=bool(blocked)
+                or not target_path,
+            ):
+
+                with st.spinner(
+                    f"🤖 {item.title} ..."
+                ):
+
+                    try:
+
+                        generated = run_task(
+                            item.prompt,
+                            plan.repository_id,
+                            target_path,
+                        )
+
+                    except Exception as error:
+
+                        st.error(
+                            f"Workflow failed: {error}"
+                        )
+
+                        st.stop()
+
+                    plan.completed.append(item.id)
+
+                    plan_store.update_completed(
+                        plan.id,
+                        plan.completed,
+                    )
+
+                    st.session_state.task = generated
+
+                    st.rerun()
+
+    ready = [
+        item
+        for item in plan.remaining
+        if plan.is_ready(item)
+    ]
+
+    run_all, clear = st.columns(2)
+
+    with run_all:
+
+        if st.button(
+            f"⏩ Uruchom cały plan ({len(plan.remaining)})",
+            disabled=not ready or not target_path,
+        ):
+
+            # Tasks are already in dependency order, so
+            # running them in sequence respects the graph.
+            for item in list(plan.remaining):
+
+                if not plan.is_ready(item):
+
+                    st.warning(
+                        f"Pominięto {item.id}: czeka na "
+                        + ", ".join(
+                            str(d)
+                            for d in plan.blocked_by(item)
+                        )
+                    )
+
+                    continue
+
+                with st.spinner(
+                    f"🤖 {item.id}. {item.title} ..."
+                ):
+
+                    try:
+
+                        generated = run_task(
+                            item.prompt,
+                            plan.repository_id,
+                            target_path,
+                        )
+
+                    except Exception as error:
+
+                        st.error(
+                            f"Zatrzymano na zadaniu "
+                            f"{item.id}: {error}"
+                        )
+
+                        break
+
+                    plan.completed.append(item.id)
+
+                    plan_store.update_completed(
+                        plan.id,
+                        plan.completed,
+                    )
+
+                    st.session_state.task = generated
+
+            st.rerun()
+
+    with clear:
+
+        if st.button("🗑 Zamknij plan"):
+
+            st.session_state.plan = None
+
+            st.rerun()
+
+    st.divider()
 
 task_description = st.text_area("Opisz zadanie dla AI")
 
