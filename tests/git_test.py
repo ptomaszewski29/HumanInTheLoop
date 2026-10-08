@@ -17,12 +17,15 @@ from agents.git_agent import (
 from database.task_repository import TaskRepository
 from models.file_type import FileType
 from models.generated_file import GeneratedFile
+from models.git_push_operation import PushStatus
 from models.task import Task
 from models.task_status import TaskStatus
 from services.git_service import (
     GitError,
     GitService,
     is_valid_branch,
+    is_valid_remote,
+    redact,
 )
 from workflows.review_decision import ReviewDecision
 
@@ -59,6 +62,17 @@ def refuses(
     failures.append(label)
 
     print(f"FAIL {label}: the operation was allowed")
+
+
+def git(repository_path: str, *arguments: str):
+    """A read-only probe used by the assertions below."""
+
+    return subprocess.run(
+        ["git", "-C", repository_path, *arguments],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
 
 
 def new_repository() -> str:
@@ -406,6 +420,243 @@ check(
     .get_by_id(uncommitted.id)
     .git_operation.committed,
     False,
+)
+
+print()
+print("=" * 80)
+print("ONLY ONE REMOTE OPERATION IS ALLOWED")
+print("=" * 80)
+
+for command in (
+    "pull",
+    "fetch",
+    "clone",
+    "rebase",
+    "merge",
+    "reset",
+    "tag",
+    "cherry-pick",
+):
+    refuses(
+        f"git {command}",
+        lambda c=command: service._run(c),
+    )
+
+for subcommand in ("add", "set-url", "remove", "rename"):
+    refuses(
+        f"git remote {subcommand}",
+        lambda s=subcommand: service._run(
+            "remote", s, "o", "u"
+        ),
+    )
+
+for flag in (
+    "--force",
+    "-f",
+    "--delete",
+    "--mirror",
+    "--all",
+    "--tags",
+):
+    refuses(
+        f"git push {flag}",
+        lambda f=flag: service._run(
+            "push", f, "origin", "main"
+        ),
+    )
+
+check(
+    "origin is a valid remote name",
+    is_valid_remote("origin"),
+    True,
+)
+
+for name in ("", "--force", "-f", "a b", "a/b"):
+    check(
+        f"rejected remote {name!r}",
+        is_valid_remote(name),
+        False,
+    )
+
+print()
+print("=" * 80)
+print("CREDENTIALS NEVER REACH STORAGE OR SCREEN")
+print("=" * 80)
+
+check(
+    "a token in a url is stripped",
+    redact("https://user:ghp_abc@github.com/o/r.git"),
+    "https://***@github.com/o/r.git",
+)
+
+check(
+    "a plain url is untouched",
+    redact("https://github.com/o/r.git"),
+    "https://github.com/o/r.git",
+)
+
+print()
+print("=" * 80)
+print("A BRANCH REACHES A REMOTE, AND ONLY WHEN ALLOWED")
+print("=" * 80)
+
+bare = tempfile.mkdtemp()
+
+subprocess.run(
+    ["git", "init", "--bare", "-b", "main", bare],
+    capture_output=True,
+    check=True,
+)
+
+pushable_path = new_repository()
+
+git(pushable_path, "remote", "add", "origin", bare)
+
+pushable = approved_task(pushable_path)
+
+check(
+    "a task with no commit may not push",
+    GitAgent.can_push(pushable)[0],
+    False,
+)
+
+pushable.git_operation = GitAgent.execute(pushable)
+
+waiting = approved_task(new_repository())
+
+waiting.status = TaskStatus.WAITING_FOR_APPROVAL
+
+check(
+    "an unapproved task may not push",
+    GitAgent.can_push(waiting)[0],
+    False,
+)
+
+check(
+    "a committed, approved task may",
+    GitAgent.can_push(pushable)[0],
+    True,
+)
+
+preview = GitAgent.push_preview(pushable)
+
+check(
+    "the preview names the remote",
+    preview["remote"],
+    "origin",
+)
+
+check(
+    "the remote has no branch yet",
+    pushable.git_operation.branch_name
+    in git(bare, "branch", "--list").stdout,
+    False,
+)
+
+push = GitAgent.push(pushable)
+
+check("the push succeeded", push.status, PushStatus.SUCCESS)
+
+check(
+    "the branch is on the remote",
+    pushable.git_operation.branch_name
+    in git(bare, "branch", "--list").stdout,
+    True,
+)
+
+check(
+    "the remote holds exactly the generated files",
+    sorted(
+        git(
+            bare,
+            "show",
+            "--name-only",
+            "--format=",
+            pushable.git_operation.branch_name,
+        ).stdout.split()
+    ),
+    sorted(
+        item.path for item in pushable.generated_files
+    ),
+)
+
+print()
+print("=" * 80)
+print("A FAILED PUSH DOES NOT UNDO AN APPROVAL")
+print("=" * 80)
+
+unreachable_path = new_repository()
+
+git(
+    unreachable_path,
+    "remote",
+    "add",
+    "origin",
+    "https://127.0.0.1:1/nope.git",
+)
+
+unreachable = approved_task(unreachable_path)
+
+unreachable.git_operation = GitAgent.execute(unreachable)
+
+failed = GitAgent.push(unreachable)
+
+check("reported as failed", failed.status, PushStatus.FAILED)
+
+check("an error is recorded", bool(failed.error), True)
+
+check(
+    "the task is still approved",
+    unreachable.status,
+    TaskStatus.APPROVED,
+)
+
+check(
+    "the local commit survives",
+    unreachable.git_operation.committed,
+    True,
+)
+
+print()
+print("=" * 80)
+print("PUSH METADATA SURVIVES A RESTART")
+print("=" * 80)
+
+TaskRepository(database).save(pushable)
+
+TaskRepository(database).update_git_push(
+    pushable.id,
+    push,
+)
+
+restored = TaskRepository(database).get_by_id(
+    pushable.id
+)
+
+check(
+    "status restored",
+    restored.git_push.status,
+    PushStatus.SUCCESS,
+)
+
+check(
+    "remote branch restored",
+    restored.git_push.remote_branch,
+    push.remote_branch,
+)
+
+check(
+    "timestamp restored",
+    restored.git_push.pushed_at,
+    push.pushed_at,
+)
+
+check(
+    "a task never pushed restores NOT_PUSHED",
+    TaskRepository(database)
+    .get_by_id(uncommitted.id)
+    .git_push.status,
+    PushStatus.NOT_PUSHED,
 )
 
 print()

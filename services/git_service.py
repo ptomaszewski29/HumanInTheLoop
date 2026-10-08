@@ -2,10 +2,9 @@ import os
 import re
 import subprocess
 
-# Local operations only. Anything that could reach a
-# remote is absent on purpose, and _run refuses whatever
-# is not on this list, so a new call site cannot quietly
-# introduce one. diff and ls-files are read only.
+# _run refuses whatever is not on this list, so a new
+# call site cannot quietly introduce an operation nobody
+# reviewed. diff, ls-files and status are read only.
 ALLOWED_COMMANDS = frozenset(
     {
         "add",
@@ -14,6 +13,8 @@ ALLOWED_COMMANDS = frozenset(
         "commit",
         "diff",
         "ls-files",
+        "push",
+        "remote",
         "rev-parse",
         "status",
         "symbolic-ref",
@@ -22,13 +23,35 @@ ALLOWED_COMMANDS = frozenset(
 
 FORBIDDEN_COMMANDS = frozenset(
     {
+        "cherry-pick",
         "clone",
         "fetch",
+        "merge",
         "pull",
-        "push",
-        "remote",
+        "rebase",
+        "reset",
         "submodule",
+        "tag",
     }
+)
+
+# Some commands are only safe in one shape. 'remote' can
+# read a URL but must never add or rewrite one, and 'push'
+# must never force, delete or mirror.
+ALLOWED_SUBCOMMANDS = {
+    "remote": frozenset({"get-url"}),
+}
+
+FORBIDDEN_PUSH_FLAGS = (
+    "--force",
+    "-f",
+    "--force-with-lease",
+    "--delete",
+    "-d",
+    "--mirror",
+    "--all",
+    "--tags",
+    "--prune",
 )
 
 # Git's own reference rules, as far as a branch name goes.
@@ -50,9 +73,38 @@ INVALID_BRANCH = re.compile(
 
 TIMEOUT_SECONDS = 60
 
+# A push waits on the network, so it gets longer.
+PUSH_TIMEOUT_SECONDS = 180
+
+# A leading dash would reach git as a flag, not a name.
+VALID_REMOTE = re.compile(
+    r"^[A-Za-z0-9_][A-Za-z0-9._-]{0,99}$"
+)
+
+# https://user:token@host/... - the secret must never be
+# stored, logged or shown.
+CREDENTIALS_IN_URL = re.compile(
+    r"(?P<scheme>[A-Za-z][A-Za-z0-9+.-]*://)"
+    r"[^/@\s]+@"
+)
+
 
 class GitError(RuntimeError):
     pass
+
+
+def redact(text: str) -> str:
+    """Removes credentials embedded in a remote URL."""
+
+    return CREDENTIALS_IN_URL.sub(
+        lambda match: f"{match.group('scheme')}***@",
+        text,
+    )
+
+
+def is_valid_remote(name: str) -> bool:
+
+    return bool(name) and bool(VALID_REMOTE.match(name))
 
 
 def is_valid_branch(name: str) -> bool:
@@ -81,6 +133,7 @@ class GitService:
     def _run(
         self,
         *arguments: str,
+        timeout: int | None = None,
     ) -> str:
 
         if not arguments:
@@ -90,8 +143,9 @@ class GitService:
 
         if command in FORBIDDEN_COMMANDS:
             raise GitError(
-                f"'git {command}' is not allowed: "
-                "Sprint 7A is local only."
+                f"'git {command}' is not allowed: the "
+                "agent may only create branches, commits "
+                "and push them."
             )
 
         if command not in ALLOWED_COMMANDS:
@@ -99,6 +153,35 @@ class GitService:
                 f"'git {command}' is not an allowed "
                 "command."
             )
+
+        permitted = ALLOWED_SUBCOMMANDS.get(command)
+
+        if permitted is not None:
+
+            subcommand = (
+                arguments[1] if len(arguments) > 1 else ""
+            )
+
+            if subcommand not in permitted:
+
+                attempted = (
+                    f"{command} {subcommand}".strip()
+                )
+
+                raise GitError(
+                    f"'git {attempted}' is not allowed; "
+                    f"only {sorted(permitted)} are."
+                )
+
+        if command == "push":
+
+            for argument in arguments[1:]:
+
+                if argument in FORBIDDEN_PUSH_FLAGS:
+                    raise GitError(
+                        f"'git push {argument}' is not "
+                        "allowed."
+                    )
 
         result = subprocess.run(
             [
@@ -109,14 +192,27 @@ class GitService:
             ],
             capture_output=True,
             text=True,
-            timeout=TIMEOUT_SECONDS,
+            timeout=timeout or TIMEOUT_SECONDS,
             check=False,
+            # Never block waiting for a password: fail
+            # with a readable error instead of hanging the
+            # app on a prompt nobody can see.
+            env={
+                **os.environ,
+                "GIT_TERMINAL_PROMPT": "0",
+                "GIT_ASKPASS": "",
+                "SSH_ASKPASS": "",
+            },
         )
 
         if result.returncode != 0:
             raise GitError(
                 f"git {command} failed: "
-                f"{(result.stderr or result.stdout).strip()}"
+                + redact(
+                    (
+                        result.stderr or result.stdout
+                    ).strip()
+                )
             )
 
         return result.stdout.strip()
@@ -224,6 +320,65 @@ class GitService:
             staged.append(line[3:].strip().strip('"'))
 
         return staged
+
+    def remote_url(
+        self,
+        remote: str = "origin",
+    ) -> str:
+        """The remote's URL, with any credentials removed."""
+
+        if not is_valid_remote(remote):
+            raise GitError(f"Invalid remote: {remote!r}")
+
+        return redact(
+            self._run("remote", "get-url", remote)
+        )
+
+    def has_remote(
+        self,
+        remote: str = "origin",
+    ) -> bool:
+
+        try:
+            return bool(self.remote_url(remote))
+
+        except (GitError, OSError, subprocess.SubprocessError):
+            return False
+
+    def push_branch(
+        self,
+        branch: str,
+        remote: str = "origin",
+    ) -> str:
+        """Sends one branch to one remote. Nothing else.
+
+        No force, no delete, no tags: the branch is
+        created or fast-forwarded, or the push fails.
+        """
+
+        if not is_valid_remote(remote):
+            raise GitError(f"Invalid remote: {remote!r}")
+
+        if not is_valid_branch(branch):
+            raise GitError(
+                f"Invalid branch name: {branch!r}"
+            )
+
+        if not self.has_remote(remote):
+            raise GitError(
+                f"No remote named {remote!r} is "
+                "configured, so there is nowhere to push."
+            )
+
+        self._run(
+            "push",
+            "--set-upstream",
+            remote,
+            f"refs/heads/{branch}:refs/heads/{branch}",
+            timeout=PUSH_TIMEOUT_SECONDS,
+        )
+
+        return f"{remote}/{branch}"
 
     def commit(self, message: str) -> str:
         """Commits what is staged and returns the hash."""

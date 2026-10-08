@@ -6,6 +6,10 @@ from models.file_type import FileType
 from models.generated_file import GeneratedFile
 from models.git_diff import ChangeType, GitDiff
 from models.git_operation import GitOperation
+from models.git_push_operation import (
+    GitPushOperation,
+    PushStatus,
+)
 from models.review_history import ReviewHistory
 from models.task import Task
 from models.task_status import TaskStatus
@@ -31,6 +35,7 @@ COLUMNS = (
     "review_iterations",
     "generated_files",
     "git_operation",
+    "git_push",
     "diffs",
     "status",
     "created_at",
@@ -54,6 +59,7 @@ ADDED_COLUMNS = {
     "review_iterations": "INTEGER NOT NULL DEFAULT 0",
     "generated_files": "TEXT NOT NULL DEFAULT '[]'",
     "git_operation": "TEXT NOT NULL DEFAULT '{}'",
+    "git_push": "TEXT NOT NULL DEFAULT '{}'",
     "diffs": "TEXT NOT NULL DEFAULT '[]'",
 }
 
@@ -92,6 +98,7 @@ class TaskRepository:
                 review_iterations INTEGER NOT NULL DEFAULT 0,
                 generated_files TEXT NOT NULL DEFAULT '[]',
                 git_operation TEXT NOT NULL DEFAULT '{}',
+                git_push TEXT NOT NULL DEFAULT '{}',
                 diffs TEXT NOT NULL DEFAULT '[]',
                 status TEXT NOT NULL,
                 created_at TEXT NOT NULL
@@ -159,6 +166,17 @@ class TaskRepository:
             }
         )
 
+        git_push_json = json.dumps(
+            {
+                "branch_name": task.git_push.branch_name,
+                "remote_name": task.git_push.remote_name,
+                "remote_url": task.git_push.remote_url,
+                "pushed_at": task.git_push.pushed_at,
+                "status": task.git_push.status.value,
+                "error": task.git_push.error,
+            }
+        )
+
         diffs_json = json.dumps(
             [
                 {
@@ -198,6 +216,7 @@ class TaskRepository:
                 task.review_iterations,
                 generated_files_json,
                 git_operation_json,
+                git_push_json,
                 diffs_json,
                 task.status.value,
                 task.created_at,
@@ -249,6 +268,38 @@ class TaskRepository:
                         "commit_hash": operation.commit_hash,
                         "commit_message": operation.commit_message,
                         "created_at": operation.created_at,
+                    }
+                ),
+                task_id,
+            ),
+        )
+
+        self.connection.commit()
+
+    def update_git_push(
+        self,
+        task_id: str,
+        operation: GitPushOperation,
+    ) -> None:
+        """Records the outcome of a push."""
+
+        cursor = self.connection.cursor()
+
+        cursor.execute(
+            """
+            UPDATE tasks
+            SET git_push = ?
+            WHERE id = ?
+            """,
+            (
+                json.dumps(
+                    {
+                        "branch_name": operation.branch_name,
+                        "remote_name": operation.remote_name,
+                        "remote_url": operation.remote_url,
+                        "pushed_at": operation.pushed_at,
+                        "status": operation.status.value,
+                        "error": operation.error,
                     }
                 ),
                 task_id,
@@ -317,6 +368,26 @@ class TaskRepository:
             created_at=data.get("created_at", ""),
         )
 
+    def _parse_git_push(
+        self,
+        git_push_json: str,
+    ) -> GitPushOperation:
+        data = json.loads(git_push_json or "{}")
+
+        if not data:
+            return GitPushOperation()
+
+        return GitPushOperation(
+            branch_name=data.get("branch_name", ""),
+            remote_name=data.get("remote_name", ""),
+            remote_url=data.get("remote_url", ""),
+            pushed_at=data.get("pushed_at", ""),
+            status=PushStatus.parse(
+                data.get("status", "")
+            ),
+            error=data.get("error", ""),
+        )
+
     def _parse_diffs(
         self,
         diffs_json: str,
@@ -360,9 +431,10 @@ class TaskRepository:
             review_iterations=row[14],
             generated_files=self._parse_generated_files(row[15]),
             git_operation=self._parse_git_operation(row[16]),
-            diffs=self._parse_diffs(row[17]),
-            status=TaskStatus(row[18]),
-            created_at=row[19],
+            git_push=self._parse_git_push(row[17]),
+            diffs=self._parse_diffs(row[18]),
+            status=TaskStatus(row[19]),
+            created_at=row[20],
         )
 
     def get_all(

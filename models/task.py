@@ -5,6 +5,7 @@ from uuid import uuid4
 from models.generated_file import GeneratedFile
 from models.git_diff import GitDiff
 from models.git_operation import GitOperation
+from models.git_push_operation import GitPushOperation
 from models.review_history import (
     ReviewHistory,
 )
@@ -52,6 +53,10 @@ class Task:
 
     git_operation: GitOperation = field(
         default_factory=GitOperation
+    )
+
+    git_push: GitPushOperation = field(
+        default_factory=GitPushOperation
     )
 
     # What the reviewer was shown before approving.

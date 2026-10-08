@@ -11,6 +11,7 @@ from database.repository_repository import (
 )
 from database.task_repository import TaskRepository
 from models.file_type import FileType
+from models.git_push_operation import PushStatus
 from models.repository import Repository
 from models.task import Task
 from models.task_status import TaskStatus
@@ -736,6 +737,94 @@ if st.session_state.task:
                 task.git_operation.commit_message,
                 language="text",
             )
+
+        st.divider()
+
+        st.subheader("Remote")
+
+        if task.git_push.pushed:
+
+            st.success(
+                "Push status: SUCCESS — "
+                f"`{task.git_push.remote_branch}`"
+            )
+
+            push_1, push_2 = st.columns(2)
+
+            with push_1:
+                st.metric("Remote", task.git_push.remote_name)
+
+            with push_2:
+                st.metric(
+                    "Remote branch",
+                    task.git_push.branch_name,
+                )
+
+            if task.git_push.remote_url:
+                st.caption(task.git_push.remote_url)
+
+            if task.git_push.pushed_at:
+                st.caption(
+                    f"Pushed: {task.git_push.pushed_at[:19]}"
+                )
+
+        else:
+
+            if task.git_push.status == PushStatus.FAILED:
+
+                st.error(
+                    "Push status: FAILED — "
+                    f"{task.git_push.error}"
+                )
+
+            push_preview = GitAgent.push_preview(task)
+
+            allowed, reason = GitAgent.can_push(task)
+
+            st.write(
+                f"**Remote:** `{push_preview['remote']}`"
+            )
+
+            st.write(
+                f"**Branch:** `{push_preview['branch']}`"
+            )
+
+            st.write(
+                f"**Files:** {len(push_preview['files'])}"
+            )
+
+            if push_preview["remote_url"]:
+                st.caption(push_preview["remote_url"])
+
+            if not allowed:
+                st.warning(reason)
+
+            st.caption(
+                "This sends the branch to the remote. "
+                "No pull request is created."
+            )
+
+            if st.button(
+                "⬆️ Push branch",
+                disabled=not allowed,
+            ):
+
+                result = GitAgent.push(task)
+
+                repository.update_git_push(
+                    task.id,
+                    result,
+                )
+
+                task.git_push = result
+
+                st.session_state.git_message = (
+                    ("success", f"Pushed {result.remote_branch}")
+                    if result.pushed
+                    else ("warning", f"Push failed: {result.error}")
+                )
+
+                st.rerun()
 
     else:
 

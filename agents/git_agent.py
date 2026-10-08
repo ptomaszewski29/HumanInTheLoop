@@ -1,11 +1,18 @@
 import re
+from datetime import UTC, datetime
 
 from models.git_operation import GitOperation
+from models.git_push_operation import (
+    GitPushOperation,
+    PushStatus,
+)
 from models.task import Task
 from models.task_status import TaskStatus
 from services.git_service import GitError, GitService
 
 BRANCH_PREFIX = "feature/task-"
+
+DEFAULT_REMOTE = "origin"
 
 SHORT_ID_LENGTH = 8
 
@@ -181,4 +188,138 @@ class GitAgent:
             branch_name=branch,
             commit_hash=commit_hash,
             commit_message=message,
+        )
+
+    @staticmethod
+    def push_preview(
+        task: Task,
+        remote: str = DEFAULT_REMOTE,
+    ) -> dict:
+        """What a push would send, without sending it."""
+
+        service = GitService(task.repository_path)
+
+        url = ""
+
+        if task.repository_path and service.is_repository():
+
+            try:
+                url = service.remote_url(remote)
+
+            except GitError:
+                url = ""
+
+        return {
+            "remote": remote,
+            "remote_url": url,
+            "branch": task.git_operation.branch_name
+            or branch_name(task.id),
+            "files": [
+                item.path for item in task.generated_files
+            ],
+        }
+
+    @staticmethod
+    def can_push(
+        task: Task,
+        remote: str = DEFAULT_REMOTE,
+    ) -> tuple[bool, str]:
+        """Whether pushing this task is allowed, and why not."""
+
+        if task.status != TaskStatus.APPROVED:
+            return (
+                False,
+                "The task has not been approved yet.",
+            )
+
+        if not task.git_operation.committed:
+            return (
+                False,
+                "There is no local commit to push yet.",
+            )
+
+        if not task.repository_path:
+            return (
+                False,
+                "The task did not record a repository.",
+            )
+
+        service = GitService(task.repository_path)
+
+        if not service.is_repository():
+            return (
+                False,
+                (
+                    "The repository folder is not a git "
+                    f"repository: {task.repository_path}"
+                ),
+            )
+
+        if not service.has_remote(remote):
+            return (
+                False,
+                (
+                    f"No remote named '{remote}' is "
+                    "configured, so there is nowhere to "
+                    "push."
+                ),
+            )
+
+        return True, ""
+
+    @staticmethod
+    def push(
+        task: Task,
+        remote: str = DEFAULT_REMOTE,
+    ) -> GitPushOperation:
+        """Sends the task's branch to the remote.
+
+        A failure is recorded and returned rather than
+        raised, because a push that does not work must not
+        undo an approval that does.
+        """
+
+        allowed, reason = GitAgent.can_push(task, remote)
+
+        branch = task.git_operation.branch_name
+
+        if not allowed:
+            return GitPushOperation(
+                branch_name=branch,
+                remote_name=remote,
+                status=PushStatus.FAILED,
+                error=reason,
+            )
+
+        service = GitService(task.repository_path)
+
+        url = service.remote_url(remote)
+
+        try:
+            service.push_branch(branch, remote)
+
+        except (GitError, OSError) as error:
+
+            print(f"GIT AGENT: push failed: {error}")
+
+            return GitPushOperation(
+                branch_name=branch,
+                remote_name=remote,
+                remote_url=url,
+                status=PushStatus.FAILED,
+                error=str(error),
+            )
+
+        print("=" * 80)
+        print("GIT AGENT: pushed")
+        print("=" * 80)
+        print(f"{remote}/{branch}")
+        print("=" * 80)
+
+        return GitPushOperation(
+            branch_name=branch,
+            remote_name=remote,
+            remote_url=url,
+            pushed_at=datetime.now(UTC).isoformat(),
+            status=PushStatus.SUCCESS,
         )
