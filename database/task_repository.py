@@ -11,6 +11,7 @@ from workflows.review_decision import (
 
 COLUMNS = (
     "id",
+    "repository_id",
     "description",
     "generated_code",
     "architecture_review",
@@ -33,6 +34,7 @@ PLACEHOLDERS = ", ".join("?" for _ in COLUMNS)
 # Columns added after the first release, with the
 # definition used to retrofit older databases.
 ADDED_COLUMNS = {
+    "repository_id": "TEXT NOT NULL DEFAULT ''",
     "recommendation": "TEXT NOT NULL DEFAULT 'UNKNOWN'",
     "blockers": "TEXT NOT NULL DEFAULT '[]'",
     "warnings": "TEXT NOT NULL DEFAULT '[]'",
@@ -60,6 +62,7 @@ class TaskRepository:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS tasks (
                 id TEXT PRIMARY KEY,
+                repository_id TEXT NOT NULL DEFAULT '',
                 description TEXT NOT NULL,
                 generated_code TEXT NOT NULL,
                 architecture_review TEXT NOT NULL,
@@ -130,6 +133,7 @@ class TaskRepository:
             """,
             (
                 task.id,
+                task.repository_id,
                 task.description,
                 task.generated_code,
                 task.architecture_review,
@@ -203,19 +207,20 @@ class TaskRepository:
 
         return Task(
             id=row[0],
-            description=row[1],
-            generated_code=row[2],
-            architecture_review=row[3],
-            architecture_score=row[4],
-            generated_tests=row[5],
-            recommendation=ReviewDecision(row[6]),
-            blockers=self._parse_findings(row[7]),
-            warnings=self._parse_findings(row[8]),
-            suggestions=self._parse_findings(row[9]),
-            review_history=self._parse_review_history(row[10]),
-            review_iterations=row[11],
-            status=TaskStatus(row[12]),
-            created_at=row[13],
+            repository_id=row[1],
+            description=row[2],
+            generated_code=row[3],
+            architecture_review=row[4],
+            architecture_score=row[5],
+            generated_tests=row[6],
+            recommendation=ReviewDecision(row[7]),
+            blockers=self._parse_findings(row[8]),
+            warnings=self._parse_findings(row[9]),
+            suggestions=self._parse_findings(row[10]),
+            review_history=self._parse_review_history(row[11]),
+            review_iterations=row[12],
+            status=TaskStatus(row[13]),
+            created_at=row[14],
         )
 
     def get_all(

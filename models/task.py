@@ -15,6 +15,8 @@ from workflows.review_decision import (
 class Task:
     id: str = field(default_factory=lambda: str(uuid4()))
 
+    repository_id: str = ""
+
     description: str = ""
 
     generated_code: str = ""

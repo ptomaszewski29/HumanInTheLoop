@@ -29,6 +29,7 @@ class WorkflowOrchestrator:
     def execute(
         self,
         task_description: str,
+        repository_id: str = "",
     ) -> Task:
 
         review_iterations = 0
@@ -99,6 +100,7 @@ Return only TypeScript code.
         generated_tests = self.qa.execute(generated_code)
 
         return Task(
+            repository_id=repository_id,
             description=task_description,
             generated_code=generated_code,
             architecture_review=architecture_review.review,

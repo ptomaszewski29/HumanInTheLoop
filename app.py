@@ -1,8 +1,14 @@
+import os
+
 import streamlit as st
 from dotenv import load_dotenv
 
 from config.settings import Settings
+from database.repository_repository import (
+    RepositoryRepository,
+)
 from database.task_repository import TaskRepository
+from models.repository import Repository
 from models.task import Task
 from models.task_status import TaskStatus
 from workflows.workflow_orchestrator import (
@@ -13,13 +19,110 @@ load_dotenv()
 
 orchestrator = WorkflowOrchestrator()
 repository = TaskRepository()
+repository_store = RepositoryRepository()
 
 if "task" not in st.session_state:
     st.session_state.task = None
 
+if "repository_id" not in st.session_state:
+    st.session_state.repository_id = None
+
+repositories = repository_store.get_all()
+
+repositories_by_id = {item.id: item for item in repositories}
+
+
+def repository_label(repository_id: str) -> str:
+
+    if not repository_id:
+        return "None"
+
+    selected = repositories_by_id.get(repository_id)
+
+    if selected is None:
+        return "Deleted repository"
+
+    return selected.name
+
 st.title(Settings.PAGE_TITLE)
 
 with st.sidebar:
+
+    st.header("📦 Repositories")
+
+    if repositories:
+
+        if st.session_state.repository_id not in repositories_by_id:
+            st.session_state.repository_id = repositories[0].id
+
+        st.session_state.repository_id = st.selectbox(
+            "Active repository",
+            [item.id for item in repositories],
+            format_func=repository_label,
+            index=[item.id for item in repositories].index(
+                st.session_state.repository_id
+            ),
+        )
+
+        active_repository = repositories_by_id[st.session_state.repository_id]
+
+        st.caption(active_repository.path)
+
+        if not os.path.isdir(active_repository.path):
+
+            st.warning(
+                "Path not found on this machine. "
+                "File generation will need a real folder."
+            )
+
+        linked_tasks = sum(
+            1
+            for item in repository.get_all()
+            if item.repository_id == active_repository.id
+        )
+
+        if st.button(
+            f"🗑 Remove ({linked_tasks} task(s) linked)",
+            use_container_width=True,
+        ):
+
+            repository_store.delete(active_repository.id)
+
+            st.session_state.repository_id = None
+
+            st.rerun()
+
+    else:
+
+        st.info("No repositories yet. Add one below.")
+
+    with st.expander("➕ Add repository"), st.form(
+        "add_repository",
+        clear_on_submit=True,
+    ):
+
+        new_name = st.text_input("Name")
+
+        new_path = st.text_input("Path")
+
+        if st.form_submit_button("Add"):
+
+            if not new_name.strip() or not new_path.strip():
+
+                st.error("Name and path are both required.")
+
+            else:
+
+                repository_store.save(
+                    Repository(
+                        name=new_name.strip(),
+                        path=new_path.strip(),
+                    )
+                )
+
+                st.rerun()
+
+    st.divider()
 
     st.header("📜 Task History")
 
@@ -49,15 +152,34 @@ else:
 
     st.info(f"Status: {st.session_state.task.status.value}")
 
+if st.session_state.repository_id:
+
+    st.caption(
+        "Repository: "
+        f"{repository_label(st.session_state.repository_id)}"
+    )
+
+else:
+
+    st.warning(
+        "Add and select a repository before creating a task."
+    )
+
 task_description = st.text_area("Opisz zadanie dla AI")
 
-if st.button("Generuj kod") and task_description:
+if st.button(
+    "Generuj kod",
+    disabled=not st.session_state.repository_id,
+) and task_description:
 
     with st.spinner("🤖 Developer → Architect → QA ..."):
 
         try:
 
-            generated_task = orchestrator.execute(task_description)
+            generated_task = orchestrator.execute(
+                task_description,
+                st.session_state.repository_id,
+            )
 
         except Exception as error:
 
@@ -80,6 +202,11 @@ if st.session_state.task:
     st.write(f"**Created:** {task.created_at}")
 
     st.write(f"**Status:** {task.status.value}")
+
+    st.write(
+        "**Repository:** "
+        f"{repository_label(task.repository_id)}"
+    )
 
     st.write(f"**Description:** {task.description}")
 
