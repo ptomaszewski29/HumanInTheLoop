@@ -4,6 +4,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from agents.git_agent import GitAgent
+from agents.pull_request_agent import PullRequestAgent
 from config.settings import Settings
 from database.repository_repository import (
     RepositoryRepository,
@@ -12,6 +13,7 @@ from database.repository_repository import (
 from database.task_repository import TaskRepository
 from models.file_type import FileType
 from models.git_push_operation import PushStatus
+from models.pull_request_info import PullRequestState
 from models.repository import Repository
 from models.task import Task
 from models.task_status import TaskStatus
@@ -767,6 +769,121 @@ if st.session_state.task:
                 st.caption(
                     f"Pushed: {task.git_push.pushed_at[:19]}"
                 )
+
+            st.divider()
+
+            st.subheader("Pull Request")
+
+            if task.pull_request.exists:
+
+                st.success(
+                    f"{task.pull_request.label} "
+                    f"{task.pull_request.state.value}"
+                )
+
+                pr_1, pr_2 = st.columns(2)
+
+                with pr_1:
+                    st.metric(
+                        "State",
+                        task.pull_request.state.value,
+                    )
+
+                with pr_2:
+                    st.metric(
+                        "Branch",
+                        task.pull_request.branch,
+                    )
+
+                st.markdown(
+                    f"[{task.pull_request.url}]"
+                    f"({task.pull_request.url})"
+                )
+
+                if task.pull_request.created_at:
+                    st.caption(
+                        "Created: "
+                        f"{task.pull_request.created_at[:19]}"
+                    )
+
+            else:
+
+                if (
+                    task.pull_request.state
+                    == PullRequestState.FAILED
+                ):
+                    st.error(
+                        "Pull request failed: "
+                        f"{task.pull_request.error}"
+                    )
+
+                pr_preview = PullRequestAgent.preview(task)
+
+                pr_allowed, pr_reason = (
+                    PullRequestAgent.can_create(task)
+                )
+
+                if pr_preview["owner"]:
+                    st.write(
+                        "**Repository:** "
+                        f"`{pr_preview['owner']}/"
+                        f"{pr_preview['repository']}`"
+                    )
+
+                st.write(
+                    f"**Branch:** `{pr_preview['branch']}`"
+                )
+
+                st.write(
+                    f"**Title:** {pr_preview['title']}"
+                )
+
+                with st.expander(
+                    "Description that would be used"
+                ):
+                    st.code(
+                        pr_preview["body"],
+                        language="markdown",
+                    )
+
+                if not pr_allowed:
+                    st.warning(pr_reason)
+
+                st.caption(
+                    "This opens a pull request. It is "
+                    "never merged, closed or commented on."
+                )
+
+                if st.button(
+                    "🔀 Create pull request",
+                    disabled=not pr_allowed,
+                ):
+
+                    info = PullRequestAgent.execute(task)
+
+                    repository.update_pull_request(
+                        task.id,
+                        info,
+                    )
+
+                    task.pull_request = info
+
+                    st.session_state.git_message = (
+                        (
+                            "success",
+                            f"Opened {info.label}: {info.url}",
+                        )
+                        if info.exists
+                        else (
+                            "warning",
+                            (
+                                "Pull request failed: "
+                                f"{info.error}"
+                            ),
+                        )
+                    )
+
+                    st.rerun()
 
         else:
 

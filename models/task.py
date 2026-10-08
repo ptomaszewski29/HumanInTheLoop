@@ -6,6 +6,7 @@ from models.generated_file import GeneratedFile
 from models.git_diff import GitDiff
 from models.git_operation import GitOperation
 from models.git_push_operation import GitPushOperation
+from models.pull_request_info import PullRequestInfo
 from models.review_history import (
     ReviewHistory,
 )
@@ -57,6 +58,10 @@ class Task:
 
     git_push: GitPushOperation = field(
         default_factory=GitPushOperation
+    )
+
+    pull_request: PullRequestInfo = field(
+        default_factory=PullRequestInfo
     )
 
     # What the reviewer was shown before approving.

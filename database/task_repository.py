@@ -10,6 +10,10 @@ from models.git_push_operation import (
     GitPushOperation,
     PushStatus,
 )
+from models.pull_request_info import (
+    PullRequestInfo,
+    PullRequestState,
+)
 from models.review_history import ReviewHistory
 from models.task import Task
 from models.task_status import TaskStatus
@@ -36,6 +40,7 @@ COLUMNS = (
     "generated_files",
     "git_operation",
     "git_push",
+    "pull_request",
     "diffs",
     "status",
     "created_at",
@@ -60,6 +65,7 @@ ADDED_COLUMNS = {
     "generated_files": "TEXT NOT NULL DEFAULT '[]'",
     "git_operation": "TEXT NOT NULL DEFAULT '{}'",
     "git_push": "TEXT NOT NULL DEFAULT '{}'",
+    "pull_request": "TEXT NOT NULL DEFAULT '{}'",
     "diffs": "TEXT NOT NULL DEFAULT '[]'",
 }
 
@@ -99,6 +105,7 @@ class TaskRepository:
                 generated_files TEXT NOT NULL DEFAULT '[]',
                 git_operation TEXT NOT NULL DEFAULT '{}',
                 git_push TEXT NOT NULL DEFAULT '{}',
+                pull_request TEXT NOT NULL DEFAULT '{}',
                 diffs TEXT NOT NULL DEFAULT '[]',
                 status TEXT NOT NULL,
                 created_at TEXT NOT NULL
@@ -177,6 +184,18 @@ class TaskRepository:
             }
         )
 
+        pull_request_json = json.dumps(
+            {
+                "id": task.pull_request.id,
+                "url": task.pull_request.url,
+                "branch": task.pull_request.branch,
+                "base": task.pull_request.base,
+                "state": task.pull_request.state.value,
+                "created_at": task.pull_request.created_at,
+                "error": task.pull_request.error,
+            }
+        )
+
         diffs_json = json.dumps(
             [
                 {
@@ -217,6 +236,7 @@ class TaskRepository:
                 generated_files_json,
                 git_operation_json,
                 git_push_json,
+                pull_request_json,
                 diffs_json,
                 task.status.value,
                 task.created_at,
@@ -308,6 +328,39 @@ class TaskRepository:
 
         self.connection.commit()
 
+    def update_pull_request(
+        self,
+        task_id: str,
+        info: PullRequestInfo,
+    ) -> None:
+        """Records the pull request a task produced."""
+
+        cursor = self.connection.cursor()
+
+        cursor.execute(
+            """
+            UPDATE tasks
+            SET pull_request = ?
+            WHERE id = ?
+            """,
+            (
+                json.dumps(
+                    {
+                        "id": info.id,
+                        "url": info.url,
+                        "branch": info.branch,
+                        "base": info.base,
+                        "state": info.state.value,
+                        "created_at": info.created_at,
+                        "error": info.error,
+                    }
+                ),
+                task_id,
+            ),
+        )
+
+        self.connection.commit()
+
     def _parse_findings(
         self,
         findings_json: str,
@@ -388,6 +441,27 @@ class TaskRepository:
             error=data.get("error", ""),
         )
 
+    def _parse_pull_request(
+        self,
+        pull_request_json: str,
+    ) -> PullRequestInfo:
+        data = json.loads(pull_request_json or "{}")
+
+        if not data:
+            return PullRequestInfo()
+
+        return PullRequestInfo(
+            id=int(data.get("id") or 0),
+            url=data.get("url", ""),
+            branch=data.get("branch", ""),
+            base=data.get("base", ""),
+            state=PullRequestState.parse(
+                data.get("state", "")
+            ),
+            created_at=data.get("created_at", ""),
+            error=data.get("error", ""),
+        )
+
     def _parse_diffs(
         self,
         diffs_json: str,
@@ -432,9 +506,10 @@ class TaskRepository:
             generated_files=self._parse_generated_files(row[15]),
             git_operation=self._parse_git_operation(row[16]),
             git_push=self._parse_git_push(row[17]),
-            diffs=self._parse_diffs(row[18]),
-            status=TaskStatus(row[19]),
-            created_at=row[20],
+            pull_request=self._parse_pull_request(row[18]),
+            diffs=self._parse_diffs(row[19]),
+            status=TaskStatus(row[20]),
+            created_at=row[21],
         )
 
     def get_all(
