@@ -71,10 +71,15 @@ class WorkflowOrchestrator:
                 )
             )
 
-            # Only blockers send the files back to the
-            # developer. Warnings and suggestions are
-            # recorded and shipped with the task.
-            if not architecture_review.blockers:
+            # Structural problems and architecture
+            # blockers both send the files back. Warnings
+            # and suggestions are recorded and shipped.
+            open_findings = (
+                architecture_review.structural
+                + architecture_review.blockers
+            )
+
+            if not open_findings:
                 break
 
             if architecture_review.recommendation == ReviewDecision.REJECT:
@@ -83,7 +88,7 @@ class WorkflowOrchestrator:
             source_files = self.developer.improve(
                 task_description,
                 source_files,
-                architecture_review.review,
+                self.fix_brief(architecture_review),
             )
 
         test_files = self.qa.execute(source_files)
@@ -109,6 +114,33 @@ class WorkflowOrchestrator:
             generated_files=generated_files,
             status=TaskStatus.WAITING_FOR_APPROVAL,
         )
+
+    @staticmethod
+    def fix_brief(review) -> str:
+        """What the developer has to act on.
+
+        Structural problems come first: they are facts
+        about the files, while the rest is judgement.
+        """
+
+        parts: list[str] = []
+
+        if review.structural:
+
+            lines = "\n".join(
+                f"- {finding}"
+                for finding in review.structural
+            )
+
+            parts.append(
+                "Repository problems found by a "
+                "compiler-style pass:\n" + lines
+            )
+
+        if review.review:
+            parts.append(review.review)
+
+        return "\n\n".join(parts)
 
     def write_files(
         self,

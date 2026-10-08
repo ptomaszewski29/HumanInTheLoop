@@ -6,6 +6,7 @@ from models.review_history import (
     ReviewHistory,
 )
 from services.file_bundle import FileBundle
+from services.finding_filter import cap, drop_structural
 from services.llm_factory import (
     LLMFactory,
 )
@@ -33,30 +34,6 @@ def _as_lines(findings: list[str]) -> str:
         return "- None"
 
     return "\n".join(f"- {finding}" for finding in findings)
-
-
-def _merge(first: list[str], second: list[str]) -> list[str]:
-    """First list wins, duplicates from the second dropped."""
-
-    merged = list(first)
-
-    known = {_key(finding) for finding in first}
-
-    for finding in second:
-
-        if _key(finding) in known:
-            continue
-
-        known.add(_key(finding))
-
-        merged.append(finding)
-
-    return merged
-
-
-def _key(finding: str) -> str:
-
-    return " ".join(finding.lower().split())
 
 
 class ArchitectAgent:
@@ -113,9 +90,10 @@ Repository Validation Report:
 
 {report.summary()}
 
-Structural problems already found by a
-compiler-style pass, which you must repeat
-verbatim under STRUCTURAL FINDINGS:
+A compiler-style pass has already checked
+this file set and recorded the problems
+below. They are handled. Do not repeat them,
+and do not look for more of their kind:
 
 {_as_lines(structural_findings)}
 
@@ -128,19 +106,32 @@ code. A file set should separate interfaces,
 services and providers, and each file should
 hold one logical component.
 
-Validate:
+Review only what cannot be checked
+mechanically:
 
-- file completeness
-- imports
-- dependencies
-- repository structure
-- required generated artifacts
+- dependency inversion and dependency
+  boundaries
+- the Open/Closed and Single Responsibility
+  principles
+- separation of concerns
+- abstraction quality and pattern choice
+- naming
+- extensibility and maintainability
 
-Add any further structural problem you find:
-a file referenced but never generated, a
-symbol imported but never exported, a
-circular dependency, or a requirement from
-the task with no implementation.
+DO NOT report:
+
+- missing files
+- missing imports
+- missing symbols
+- requirement coverage
+- compilation problems
+
+A structural validator already owns those,
+and repeating them makes the review wrong as
+often as it makes it right.
+
+Report at most 5 findings in total. Prefer
+the few that matter most.
 
 Classify every finding by severity.
 
@@ -150,24 +141,14 @@ architectural, functional, security,
 reliability or maintainability
 requirements.
 
-Always a BLOCKER, with no exception:
+Always a BLOCKER:
 
-- the code would not compile or run
-- the code is incomplete, truncated, or has
-  unbalanced braces or brackets
-- the code calls or references something
-  that is not defined
-- a requirement stated in the task is not
-  implemented
+- a dependency inversion violation
+- a broken abstraction boundary
+- a hard-coded infrastructure dependency
+- invalid business logic
 - a security vulnerability
-- a file imports something no file in the
-  set defines
-
-Also a BLOCKER: dependency inversion
-violations, broken abstraction boundaries,
-hard-coded infrastructure dependencies,
-invalid business logic, missing required
-interfaces, unbounded resource consumption.
+- unbounded resource consumption
 
 WARNING
 Should be fixed, but does not make the
@@ -184,13 +165,10 @@ style, future-proofing.
 
 Rules:
 
-- Anything that stops the code from
-  compiling, running, or meeting a stated
-  requirement is a BLOCKER, however small
-  the fix looks.
-- For questions of design taste and
-  polish only, when in doubt choose
-  WARNING over BLOCKER.
+- A BLOCKER is an architectural decision that
+  must change before this ships, not a
+  missing file.
+- When in doubt choose WARNING over BLOCKER.
 - Missing logging, error handling, retries,
   metrics and tests are WARNINGS or
   SUGGESTIONS, never BLOCKERS, unless the
@@ -242,9 +220,6 @@ WARNINGS:
 
 SUGGESTIONS:
 - finding
-
-STRUCTURAL FINDINGS:
-- finding
 """
 
         raw_review = (
@@ -271,22 +246,38 @@ STRUCTURAL FINDINGS:
             raw_review, "suggestions"
         )
 
-        structural = _merge(
-            structural_findings,
-            ReviewParser.section(
-                raw_review, "structural"
-            ),
+        # Structural findings come from the validator
+        # alone. Anything the model says about missing
+        # files, imports or symbols is dropped, because it
+        # read the code while the validator checked it.
+        structural = structural_findings
+
+        blockers = cap(
+            drop_structural(blockers, "blockers"),
+            "blockers",
         )
 
-        # A structural problem always blocks, whatever the
-        # model decided to call it.
-        blockers = _merge(structural, blockers)
+        warnings = cap(
+            drop_structural(warnings, "warnings"),
+            "warnings",
+        )
+
+        suggestions = cap(
+            drop_structural(suggestions, "suggestions"),
+            "suggestions",
+        )
 
         # A finding cannot be resolved and open at
         # the same time; still being open wins.
-        resolved = drop_contradictions(
-            resolved,
-            blockers + warnings + suggestions,
+        resolved = drop_structural(
+            drop_contradictions(
+                resolved,
+                blockers
+                + warnings
+                + suggestions
+                + structural,
+            ),
+            "resolved findings",
         )
 
         stated = ReviewParser.stated_recommendation(
@@ -295,6 +286,7 @@ STRUCTURAL FINDINGS:
 
         recommendation = RecommendationPolicy.decide(
             blockers,
+            structural,
             ReviewDecision(stated) if stated else None,
         )
 
@@ -303,7 +295,6 @@ STRUCTURAL FINDINGS:
             blockers,
             warnings,
             suggestions,
-            structural,
         )
 
         print("=" * 80)
@@ -345,12 +336,10 @@ STRUCTURAL FINDINGS:
         blockers: list[str],
         warnings: list[str],
         suggestions: list[str],
-        structural: list[str],
     ) -> str:
 
         sections = (
             ("Resolved Findings", resolved),
-            ("Structural Findings", structural),
             ("Blockers", blockers),
             ("Warnings", warnings),
             ("Suggestions", suggestions),

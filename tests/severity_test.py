@@ -109,6 +109,7 @@ check(
     "a blocker overrides a stated APPROVE",
     RecommendationPolicy.decide(
         ["security hole"],
+        [],
         ReviewDecision.APPROVE,
     ),
     ReviewDecision.REQUEST_CHANGES,
@@ -118,6 +119,7 @@ check(
     "no blocker overrides stated REQUEST_CHANGES",
     RecommendationPolicy.decide(
         [],
+        [],
         ReviewDecision.REQUEST_CHANGES,
     ),
     ReviewDecision.APPROVE,
@@ -126,6 +128,7 @@ check(
 check(
     "an explicit REJECT is kept",
     RecommendationPolicy.decide(
+        [],
         [],
         ReviewDecision.REJECT,
     ),

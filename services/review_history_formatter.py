@@ -26,8 +26,14 @@ Score:
 Recommendation:
 {review.recommendation.value}
 
-{ReviewHistoryFormatter._section("STRUCTURAL", review.structural)}
-{ReviewHistoryFormatter._section("BLOCKERS", review.blockers)}
+{ReviewHistoryFormatter._section(
+    "STRUCTURAL FINDINGS (repository problems, "
+    "already fixed or still open)",
+    review.structural,
+)}
+{ReviewHistoryFormatter._section(
+    "ARCHITECTURE BLOCKERS", review.blockers
+)}
 {ReviewHistoryFormatter._section("WARNINGS", review.warnings)}
 {ReviewHistoryFormatter._section("SUGGESTIONS", review.suggestions)}
 --------------------------
@@ -63,10 +69,10 @@ Recommendation:
 
         return (
             ReviewHistoryFormatter._section(
-                "STRUCTURAL", last.structural
+                "STRUCTURAL PROBLEMS", last.structural
             )
             + ReviewHistoryFormatter._section(
-                "BLOCKERS", last.blockers
+                "ARCHITECTURE BLOCKERS", last.blockers
             )
             + ReviewHistoryFormatter._section(
                 "WARNINGS", last.warnings

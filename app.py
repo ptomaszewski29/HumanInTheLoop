@@ -374,6 +374,7 @@ if st.session_state.task:
     (
         tab_code,
         tab_review,
+        tab_structure,
         tab_history,
         tab_tests,
         tab_files,
@@ -381,6 +382,7 @@ if st.session_state.task:
         [
             "💻 Code",
             "🏛 Architecture Review",
+            "🏗 Structural Findings",
             "📜 Review History",
             "🧪 Tests",
             "📂 Generated Files",
@@ -414,7 +416,26 @@ if st.session_state.task:
 
     with tab_review:
 
-        st.subheader("Structural Findings")
+        st.caption(
+            "Design, boundaries and maintainability. "
+            "File and import problems live in "
+            "Structural Findings."
+        )
+
+        if task.architecture_review:
+
+            st.markdown(task.architecture_review)
+
+        else:
+
+            st.info("No architecture review available.")
+
+    with tab_structure:
+
+        st.caption(
+            "Found by a deterministic pass over the "
+            "generated files, not by the model."
+        )
 
         if task.structural:
 
@@ -424,16 +445,6 @@ if st.session_state.task:
         else:
 
             st.success("No structural problems found.")
-
-        st.divider()
-
-        if task.architecture_review:
-
-            st.markdown(task.architecture_review)
-
-        else:
-
-            st.info("No architecture review available.")
 
     with tab_history:
 

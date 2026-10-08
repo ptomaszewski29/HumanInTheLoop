@@ -79,9 +79,14 @@ Current files:
 
 {FileBundle.render(files)}
 
-Fix every BLOCKER. Address the warnings only
-if that does not risk a blocker. Ignore the
-suggestions.
+First, fix every repository problem. If a
+file is reported missing, create that exact
+file with real content. If a symbol is
+reported missing, define and export it.
+
+Then fix every BLOCKER. Address the warnings
+only if that does not risk a blocker. Ignore
+the suggestions.
 
 Return the complete file set, including the
 files you did not change. You may add or
