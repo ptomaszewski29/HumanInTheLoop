@@ -42,8 +42,21 @@ and a dependency list each. The ordering is computed in code: dependencies
 first, then priority, then id. A task whose dependencies have not run is
 shown as blocked and cannot be started.
 
-If the model produces a dependency cycle, the tasks caught in it are
-reported and appended at the end rather than dropped or looped over.
+The breakdown the model proposes is validated before it is shown. Three
+things are reported rather than quietly repaired:
+
+| Problem | What happens |
+|---|---|
+| a task depends on itself | the dependency is dropped, and said so |
+| a task depends on an id the plan does not contain | the same |
+| two or more tasks form a cycle | they are named, and listed last |
+
+The plan stays usable in every case — the point of reporting is that you
+see what the model got wrong, instead of a graph that was silently edited
+into shape behind you.
+
+The **Dependency graph** panel shows the tasks as layers: everything in one
+step can run once the steps above it are done.
 
 **Run single task** runs one. **Run entire plan** walks the remaining tasks
 in order, stopping at the first failure so you can see what went wrong.

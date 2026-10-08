@@ -25,7 +25,11 @@ Rules:
   code that implements them
 - tests come after what they test
 - a dependency is the id of an earlier task
-- priority is HIGH, MEDIUM or LOW
+- priority is HIGH, MEDIUM or LOW:
+  foundational abstractions, interfaces and
+  contracts are HIGH; implementations and
+  providers are MEDIUM; tests and
+  documentation are LOW
 - do not plan deployment, infrastructure or
   documentation unless the epic asks for it
 
@@ -177,7 +181,7 @@ class PlannerAgent:
                 f"PlannerAgent returned no usable plan: {error}"
             ) from error
 
-        tasks = self._to_tasks(entries)
+        tasks, issues = self._to_tasks(entries)
 
         if not tasks:
             raise RuntimeError(
@@ -187,6 +191,14 @@ class PlannerAgent:
         tasks = order_tasks(tasks)
 
         cycles = find_cycles(tasks)
+
+        if cycles:
+            issues.append(
+                "Circular dependency between tasks "
+                + ", ".join(str(item) for item in cycles)
+                + ". They cannot be ordered, so they are "
+                "listed last."
+            )
 
         print("=" * 80)
         print(f"PLANNER RESULT ({len(tasks)} task(s))")
@@ -199,8 +211,8 @@ class PlannerAgent:
                 f"after={item.dependencies or '-'}"
             )
 
-        if cycles:
-            print(f"  circular dependencies: {cycles}")
+        for issue in issues:
+            print(f"  ! {issue}")
 
         print("=" * 80)
 
@@ -208,6 +220,7 @@ class PlannerAgent:
             repository_id=repository_id,
             epic=epic,
             tasks=tasks,
+            issues=issues,
         )
 
     @staticmethod
@@ -248,9 +261,11 @@ class PlannerAgent:
     @staticmethod
     def _to_tasks(
         entries: list[dict],
-    ) -> list[TaskBreakdown]:
+    ) -> tuple[list[TaskBreakdown], list[str]]:
 
         tasks: list[TaskBreakdown] = []
+
+        issues: list[str] = []
 
         used: set[int] = set()
 
@@ -288,11 +303,16 @@ class PlannerAgent:
                     dependencies=PlannerAgent._dependencies(
                         entry,
                         task_id,
+                        title,
+                        issues,
                     ),
                 )
             )
 
-        return PlannerAgent._drop_unknown(tasks)
+        return (
+            PlannerAgent._drop_unknown(tasks, issues),
+            issues,
+        )
 
     @staticmethod
     def _identifier(
@@ -319,6 +339,8 @@ class PlannerAgent:
     def _dependencies(
         entry: dict,
         task_id: int,
+        title: str,
+        issues: list[str],
     ) -> list[int]:
 
         raw = entry.get("dependencies") or []
@@ -334,10 +356,24 @@ class PlannerAgent:
                 value = int(str(item).strip())
 
             except (TypeError, ValueError):
+                issues.append(
+                    f"Task {task_id} '{title}' listed "
+                    f"{item!r} as a dependency, which is "
+                    "not a task id. It was ignored."
+                )
+
                 continue
 
-            # A task cannot wait for itself.
-            if value != task_id and value not in found:
+            if value == task_id:
+                issues.append(
+                    f"Task {task_id} '{title}' depended "
+                    "on itself. That dependency was "
+                    "dropped."
+                )
+
+                continue
+
+            if value not in found:
                 found.append(value)
 
         return found
@@ -345,12 +381,27 @@ class PlannerAgent:
     @staticmethod
     def _drop_unknown(
         tasks: list[TaskBreakdown],
+        issues: list[str],
     ) -> list[TaskBreakdown]:
         """Removes dependencies on tasks that do not exist."""
 
         known = {item.id for item in tasks}
 
         for item in tasks:
+
+            unknown = [
+                dependency
+                for dependency in item.dependencies
+                if dependency not in known
+            ]
+
+            for dependency in unknown:
+                issues.append(
+                    f"Task {item.id} '{item.title}' "
+                    f"depended on task {dependency}, "
+                    "which the plan does not contain. "
+                    "That dependency was dropped."
+                )
 
             item.dependencies = [
                 dependency

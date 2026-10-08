@@ -182,14 +182,26 @@ print("=" * 80)
 print("A MALFORMED PLAN IS CLEANED, NOT TRUSTED")
 print("=" * 80)
 
+reports: list[str] = []
+
 check(
     "a task may not depend on itself",
     PlannerAgent._dependencies(
         {"dependencies": [2, 3]},
         2,
+        "a",
+        reports,
     ),
     [3],
 )
+
+check(
+    "and that is reported",
+    len(reports),
+    1,
+)
+
+reports = []
 
 check(
     "a dependency on a task that does not exist is dropped",
@@ -199,9 +211,16 @@ check(
                 1, "a", "", Priority.HIGH, [9, 2]
             ),
             TaskBreakdown(2, "b", "", Priority.HIGH),
-        ]
+        ],
+        reports,
     )[0].dependencies,
     [2],
+)
+
+check(
+    "and that is reported too",
+    len(reports),
+    1,
 )
 
 check(
@@ -235,6 +254,151 @@ try:
 
 except RuntimeError:
     print("OK   an unusable answer fails loudly")
+
+print()
+print("=" * 80)
+print("INVALID DEPENDENCIES ARE REPORTED, NOT HIDDEN")
+print("=" * 80)
+
+use(
+    json.dumps(
+        {
+            "files": [
+                {
+                    "path": "1",
+                    "content": "First",
+                    "priority": "HIGH",
+                    "dependencies": [1],
+                },
+                {
+                    "path": "2",
+                    "content": "Second",
+                    "priority": "LOW",
+                    "dependencies": [99, "abc"],
+                },
+            ]
+        }
+    )
+)
+
+reported = PlannerAgent().execute("Epic.")
+
+text = " ".join(reported.issues)
+
+check(
+    "three problems are reported",
+    len(reported.issues),
+    3,
+)
+
+check(
+    "a self-dependency is named",
+    "depended on itself" in text,
+    True,
+)
+
+check(
+    "an unknown task is named",
+    "which the plan does not contain" in text,
+    True,
+)
+
+check(
+    "a dependency that is not an id is named",
+    "not a task id" in text,
+    True,
+)
+
+check(
+    "the plan is still usable",
+    len(reported.tasks),
+    2,
+)
+
+check(
+    "and the bad dependencies are gone",
+    [item.dependencies for item in reported.tasks],
+    [[], []],
+)
+
+use(
+    json.dumps(
+        {
+            "files": [
+                {
+                    "path": "1",
+                    "content": "A",
+                    "priority": "HIGH",
+                    "dependencies": [2],
+                },
+                {
+                    "path": "2",
+                    "content": "B",
+                    "priority": "HIGH",
+                    "dependencies": [1],
+                },
+            ]
+        }
+    )
+)
+
+looped = PlannerAgent().execute("Epic.")
+
+check(
+    "a cycle is reported",
+    any(
+        "Circular dependency" in issue
+        for issue in looped.issues
+    ),
+    True,
+)
+
+check(
+    "and both tasks are named",
+    "1, 2" in " ".join(looped.issues),
+    True,
+)
+
+use(json.dumps(PLAN))
+
+clean = PlannerAgent().execute("Epic.")
+
+check(
+    "a sound plan reports nothing",
+    clean.issues,
+    [],
+)
+
+print()
+print("=" * 80)
+print("THE DEPENDENCY GRAPH READS AS LAYERS")
+print("=" * 80)
+
+levels = plan.levels()
+
+check(
+    "three steps",
+    [[item.id for item in layer] for layer in levels],
+    [[1], [2], [3]],
+)
+
+check(
+    "every task appears once",
+    sorted(
+        item.id for layer in levels for item in layer
+    ),
+    [1, 2, 3],
+)
+
+check(
+    "a task in a cycle still gets a place",
+    sorted(
+        item.id
+        for layer in looped.levels()
+        for item in layer
+    ),
+    [1, 2],
+)
 
 print()
 print("=" * 80)
@@ -313,6 +477,28 @@ check(
 )
 
 check("progress restored", restored.completed, [1])
+
+check(
+    "reported problems are restored too",
+    PlanRepository(database)
+    .get_by_id(reported.id)
+    .issues
+    if PlanRepository(database).get_by_id(reported.id)
+    else None,
+    None,
+)
+
+store.save(reported)
+
+check(
+    "a plan with problems keeps them",
+    len(
+        PlanRepository(database)
+        .get_by_id(reported.id)
+        .issues
+    ),
+    3,
+)
 
 store.update_completed(plan.id, [1, 2])
 

@@ -22,6 +22,11 @@ class Plan:
     # Task ids already run through the pipeline.
     completed: list[int] = field(default_factory=list)
 
+    # Problems found in the breakdown the model proposed:
+    # self-dependencies, unknown ids, cycles. Reported
+    # rather than silently repaired.
+    issues: list[str] = field(default_factory=list)
+
     created_at: str = field(
         default_factory=lambda: datetime.now(
             UTC
@@ -65,3 +70,55 @@ class Plan:
     def is_ready(self, item: TaskBreakdown) -> bool:
 
         return not self.blocked_by(item)
+
+    def levels(self) -> list[list[TaskBreakdown]]:
+        """The tasks arranged in dependency layers.
+
+        Everything in one layer can run once the layers
+        above it are done. A task caught in a cycle has no
+        layer, so it lands in the last one.
+        """
+
+        known = {item.id for item in self.tasks}
+
+        placed: dict[int, int] = {}
+
+        remaining = list(self.tasks)
+
+        depth = 0
+
+        while remaining and depth < len(self.tasks) + 1:
+
+            ready = [
+                item
+                for item in remaining
+                if all(
+                    dependency in placed
+                    or dependency not in known
+                    for dependency in item.dependencies
+                )
+            ]
+
+            if not ready:
+                break
+
+            for item in ready:
+                placed[item.id] = depth
+
+                remaining.remove(item)
+
+            depth += 1
+
+        layers: list[list[TaskBreakdown]] = [
+            [] for _ in range(depth + (1 if remaining else 0))
+        ]
+
+        for item in self.tasks:
+
+            if item.id in placed:
+                layers[placed[item.id]].append(item)
+
+        if remaining:
+            layers[-1].extend(remaining)
+
+        return [layer for layer in layers if layer]

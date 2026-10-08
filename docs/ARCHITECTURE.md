@@ -36,8 +36,9 @@ Turns an epic into a list of tasks. The model proposes the breakdown; the
 ordering, the dependency checks and the cycle detection happen in code.
 
 A task may not depend on itself, on a task that does not exist, or sit in a
-cycle without being reported. A truncated answer keeps the tasks the model
-finished rather than being discarded.
+cycle without being reported: each of those is recorded on the plan and
+shown, rather than quietly repaired. A truncated answer keeps the tasks the
+model finished rather than being discarded.
 
 Owns: what a task *is*.
 Does not own: anything about the code that task produces.

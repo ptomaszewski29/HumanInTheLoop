@@ -11,12 +11,19 @@ COLUMNS = (
     "epic",
     "tasks",
     "completed",
+    "issues",
     "created_at",
 )
 
 COLUMN_LIST = ",\n                ".join(COLUMNS)
 
 PLACEHOLDERS = ", ".join("?" for _ in COLUMNS)
+
+# Columns added after the table first shipped, with the
+# definition used to retrofit an existing database.
+ADDED_COLUMNS = {
+    "issues": "TEXT NOT NULL DEFAULT '[]'",
+}
 
 
 class PlanRepository:
@@ -41,9 +48,35 @@ class PlanRepository:
                 epic TEXT NOT NULL,
                 tasks TEXT NOT NULL DEFAULT '[]',
                 completed TEXT NOT NULL DEFAULT '[]',
+                issues TEXT NOT NULL DEFAULT '[]',
                 created_at TEXT NOT NULL
             )
             """)
+
+        self.connection.commit()
+
+        self.migrate()
+
+    def migrate(self) -> None:
+
+        cursor = self.connection.cursor()
+
+        columns = {
+            row[1]
+            for row in cursor.execute(
+                "PRAGMA table_info(plans)"
+            )
+        }
+
+        for name, definition in ADDED_COLUMNS.items():
+
+            if name in columns:
+                continue
+
+            cursor.execute(
+                f"ALTER TABLE plans ADD COLUMN "
+                f"{name} {definition}"
+            )
 
         self.connection.commit()
 
@@ -81,6 +114,7 @@ class PlanRepository:
                 plan.epic,
                 self._tasks_json(plan),
                 json.dumps(plan.completed),
+                json.dumps(plan.issues),
                 plan.created_at,
             ),
         )
@@ -152,7 +186,8 @@ class PlanRepository:
             epic=row[2],
             tasks=self._parse_tasks(row[3]),
             completed=json.loads(row[4] or "[]"),
-            created_at=row[5],
+            issues=json.loads(row[5] or "[]"),
+            created_at=row[6],
         )
 
     def get_all(self) -> list[Plan]:

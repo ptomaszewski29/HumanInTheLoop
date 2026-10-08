@@ -347,6 +347,46 @@ if st.session_state.plan:
 
     st.caption(plan.epic)
 
+    if plan.issues:
+
+        st.warning(
+            f"The planner reported {len(plan.issues)} "
+            "problem(s) with the breakdown it proposed:"
+        )
+
+        for issue in plan.issues:
+            st.write(f"- {issue}")
+
+    with st.expander("Dependency graph"):
+
+        levels = plan.levels()
+
+        if not levels:
+
+            st.write("No tasks.")
+
+        for depth, layer in enumerate(levels, start=1):
+
+            st.markdown(f"**Step {depth}**")
+
+            for item in layer:
+
+                after = (
+                    " ← "
+                    + ", ".join(
+                        str(d) for d in item.dependencies
+                    )
+                    if item.dependencies
+                    else ""
+                )
+
+                done = "✅ " if plan.is_done(item.id) else ""
+
+                st.write(
+                    f"{done}`{item.id}` {item.title} "
+                    f"[{item.priority.value}]{after}"
+                )
+
     done = len(plan.completed)
 
     st.progress(
