@@ -15,6 +15,7 @@ from models.repository import Repository
 from models.task import Task
 from models.task_status import TaskStatus
 from services.file_writer import FileWriter
+from services.git_diff_service import GitDiffService
 from services.git_service import GitError, GitService
 from workflows.workflow_orchestrator import (
     WorkflowOrchestrator,
@@ -385,6 +386,7 @@ if st.session_state.task:
         tab_history,
         tab_tests,
         tab_files,
+        tab_diff,
     ) = st.tabs(
         [
             "💻 Code",
@@ -393,6 +395,7 @@ if st.session_state.task:
             "📜 Review History",
             "🧪 Tests",
             "📂 Generated Files",
+            "🔍 Diff Review",
         ]
     )
 
@@ -583,6 +586,107 @@ if st.session_state.task:
                         st.code(
                             content,
                             language="typescript",
+                        )
+
+    with tab_diff:
+
+        st.caption(
+            "What these files would change in the "
+            "repository. Reading only; nothing is written."
+        )
+
+        if not task.generated_files:
+
+            st.info("This task generated no files.")
+
+        elif not task_root:
+
+            st.warning(
+                "This task did not record a repository, "
+                "so there is nothing to compare against."
+            )
+
+        else:
+
+            live_diffs = GitDiffService.compare(
+                task_root,
+                [
+                    item.path
+                    for item in task.generated_files
+                ],
+            )
+
+            # Once committed there is nothing left to
+            # compare, so the stored verdicts are the
+            # evidence of what was reviewed.
+            shown = (
+                task.diffs
+                if task.git_operation.committed
+                and task.diffs
+                else live_diffs
+            )
+
+            counts = GitDiffService.summary(shown)
+
+            (
+                diff_1,
+                diff_2,
+                diff_3,
+            ) = st.columns(3)
+
+            with diff_1:
+                st.metric("Added", counts["added"])
+
+            with diff_2:
+                st.metric("Modified", counts["modified"])
+
+            with diff_3:
+                st.metric("Deleted", counts["deleted"])
+
+            if counts["unchanged"]:
+
+                st.caption(
+                    f"{counts['unchanged']} file(s) "
+                    "already match the repository."
+                )
+
+            if task.git_operation.committed:
+
+                st.info(
+                    "These changes are already committed "
+                    f"as {task.git_operation.short_hash}."
+                )
+
+            st.divider()
+
+            for diff in shown:
+
+                with st.expander(
+                    f"{diff.change_type.value} · "
+                    f"{diff.file_path}",
+                    expanded=diff.is_change,
+                ):
+
+                    if diff.diff_content:
+
+                        st.code(
+                            diff.diff_content,
+                            language="diff",
+                        )
+
+                    elif diff.change_type.value == "unchanged":
+
+                        st.caption(
+                            "Identical to the committed "
+                            "version."
+                        )
+
+                    else:
+
+                        st.caption(
+                            "No diff text available any "
+                            "more; the verdict above is "
+                            "what was reviewed."
                         )
 
     st.divider()

@@ -2,16 +2,18 @@ import os
 import re
 import subprocess
 
-# Sprint 7A is local only. Anything that could reach a
+# Local operations only. Anything that could reach a
 # remote is absent on purpose, and _run refuses whatever
 # is not on this list, so a new call site cannot quietly
-# introduce one.
+# introduce one. diff and ls-files are read only.
 ALLOWED_COMMANDS = frozenset(
     {
         "add",
         "branch",
         "checkout",
         "commit",
+        "diff",
+        "ls-files",
         "rev-parse",
         "status",
         "symbolic-ref",

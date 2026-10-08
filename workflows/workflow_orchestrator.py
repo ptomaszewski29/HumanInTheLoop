@@ -12,6 +12,7 @@ from models.review_history import (
 from models.task import Task
 from models.task_status import TaskStatus
 from services.file_writer import FileWriter
+from services.git_diff_service import GitDiffService
 from workflows.review_decision import (
     ReviewDecision,
 )
@@ -98,6 +99,14 @@ class WorkflowOrchestrator:
             source_files + test_files,
         )
 
+        # What a reviewer will be asked to approve. Read
+        # only: the files are already on disk, so this
+        # compares them with what git has recorded.
+        diffs = GitDiffService.compare(
+            repository_path,
+            [item.path for item in generated_files],
+        )
+
         return Task(
             repository_id=repository_id,
             repository_path=repository_path,
@@ -112,6 +121,7 @@ class WorkflowOrchestrator:
             review_iterations=review_iterations,
             review_history=review_history,
             generated_files=generated_files,
+            diffs=diffs,
             status=TaskStatus.WAITING_FOR_APPROVAL,
         )
 

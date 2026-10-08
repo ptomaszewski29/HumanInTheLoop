@@ -4,6 +4,7 @@ import sqlite3
 from config.settings import Settings
 from models.file_type import FileType
 from models.generated_file import GeneratedFile
+from models.git_diff import ChangeType, GitDiff
 from models.git_operation import GitOperation
 from models.review_history import ReviewHistory
 from models.task import Task
@@ -30,6 +31,7 @@ COLUMNS = (
     "review_iterations",
     "generated_files",
     "git_operation",
+    "diffs",
     "status",
     "created_at",
 )
@@ -52,6 +54,7 @@ ADDED_COLUMNS = {
     "review_iterations": "INTEGER NOT NULL DEFAULT 0",
     "generated_files": "TEXT NOT NULL DEFAULT '[]'",
     "git_operation": "TEXT NOT NULL DEFAULT '{}'",
+    "diffs": "TEXT NOT NULL DEFAULT '[]'",
 }
 
 
@@ -89,6 +92,7 @@ class TaskRepository:
                 review_iterations INTEGER NOT NULL DEFAULT 0,
                 generated_files TEXT NOT NULL DEFAULT '[]',
                 git_operation TEXT NOT NULL DEFAULT '{}',
+                diffs TEXT NOT NULL DEFAULT '[]',
                 status TEXT NOT NULL,
                 created_at TEXT NOT NULL
             )
@@ -155,6 +159,16 @@ class TaskRepository:
             }
         )
 
+        diffs_json = json.dumps(
+            [
+                {
+                    "file_path": item.file_path,
+                    "change_type": item.change_type.value,
+                }
+                for item in task.diffs
+            ]
+        )
+
         cursor = self.connection.cursor()
 
         cursor.execute(
@@ -184,6 +198,7 @@ class TaskRepository:
                 task.review_iterations,
                 generated_files_json,
                 git_operation_json,
+                diffs_json,
                 task.status.value,
                 task.created_at,
             ),
@@ -302,6 +317,26 @@ class TaskRepository:
             created_at=data.get("created_at", ""),
         )
 
+    def _parse_diffs(
+        self,
+        diffs_json: str,
+    ) -> list[GitDiff]:
+        """The review evidence, without the diff bodies.
+
+        Only the verdict per file is stored; the text is
+        regenerated from the repository when shown.
+        """
+
+        return [
+            GitDiff(
+                file_path=item["file_path"],
+                change_type=ChangeType.parse(
+                    item.get("change_type", "")
+                ),
+            )
+            for item in json.loads(diffs_json or "[]")
+        ]
+
     def _to_task(
         self,
         row: tuple,
@@ -325,8 +360,9 @@ class TaskRepository:
             review_iterations=row[14],
             generated_files=self._parse_generated_files(row[15]),
             git_operation=self._parse_git_operation(row[16]),
-            status=TaskStatus(row[17]),
-            created_at=row[18],
+            diffs=self._parse_diffs(row[17]),
+            status=TaskStatus(row[18]),
+            created_at=row[19],
         )
 
     def get_all(
