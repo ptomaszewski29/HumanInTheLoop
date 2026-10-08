@@ -85,7 +85,7 @@ class FileWriter:
         )
 
         return GeneratedFile(
-            file_path=result.relative_path.strip().replace(
+            path=result.relative_path.strip().replace(
                 "\\", "/"
             ),
             file_type=result.file_type,

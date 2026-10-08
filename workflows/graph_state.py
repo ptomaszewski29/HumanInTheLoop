@@ -1,6 +1,7 @@
 import operator
 from typing import Annotated, TypedDict
 
+from models.generated_file import GeneratedFile
 from models.review_history import (
     ReviewHistory,
 )
@@ -9,7 +10,7 @@ from models.review_history import (
 class GraphState(TypedDict):
     task_description: str
 
-    generated_code: str
+    source_files: list[GeneratedFile]
 
     architecture_review: str
 
@@ -23,7 +24,7 @@ class GraphState(TypedDict):
 
     suggestions: list[str]
 
-    generated_tests: str
+    test_files: list[GeneratedFile]
 
     review_iterations: int
 

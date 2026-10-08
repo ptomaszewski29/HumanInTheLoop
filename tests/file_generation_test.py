@@ -1,10 +1,11 @@
-"""Offline checks for repository file generation.
+"""Offline checks for multi file generation.
 
 Runs without an LLM:
 
     python -m tests.file_generation_test
 """
 
+import json
 import os
 import tempfile
 
@@ -13,8 +14,9 @@ from models.file_generation_result import (
     FileGenerationResult,
 )
 from models.file_type import FileType
+from models.generated_file import GeneratedFile
 from models.task import Task
-from services.file_naming import FileNaming
+from services.file_parser import FileParseError, FileParser
 from services.file_writer import FileWriter
 
 failures: list[str] = []
@@ -37,132 +39,200 @@ def check(
 
 def rejects(
     label: str,
-    repository_path: str,
-    relative_path: str,
+    raw: str,
 ) -> None:
 
     try:
-        FileWriter.resolve(
-            repository_path,
-            relative_path,
-        )
+        FileParser.parse(raw)
 
-    except ValueError:
+    except (FileParseError, ValueError):
         print(f"OK   {label}")
         return
 
     failures.append(label)
 
-    print(f"FAIL {label}: the path was allowed")
+    print(f"FAIL {label}: the answer was accepted")
 
 
-CODE = "export class NotificationService { send(): void {} }"
-
-TESTS = "describe('NotificationService', () => {});"
-
-repository_path = tempfile.mkdtemp()
-
-print("=" * 80)
-print("PATHS ARE DERIVED FROM THE CODE")
-print("=" * 80)
-
-check(
-    "code path",
-    FileNaming.code_path(CODE),
-    "src/services/notification.service.ts",
+ANSWER = json.dumps(
+    {
+        "files": [
+            {
+                "path": "src/notification.interface.ts",
+                "content": "export interface Notification {}",
+            },
+            {
+                "path": "src/email.provider.ts",
+                "content": "export class EmailProvider {}",
+            },
+            {
+                "path": "src/notification.service.ts",
+                "content": "export class NotificationService {}",
+            },
+        ]
+    }
 )
 
+print("=" * 80)
+print("THE MODEL'S JSON BECOMES FILES")
+print("=" * 80)
+
+files = FileParser.parse(ANSWER)
+
+check("three files", len(files), 3)
+
 check(
-    "test path",
-    FileNaming.test_path(CODE),
-    "tests/notification.service.test.ts",
-)
-
-print()
-print("=" * 80)
-print("NOTHING ESCAPES THE REPOSITORY")
-print("=" * 80)
-
-rejects("parent traversal", repository_path, "../escaped.ts")
-
-rejects("nested traversal", repository_path, "src/../../escaped.ts")
-
-rejects("absolute path", repository_path, "/etc/passwd")
-
-rejects("windows absolute path", repository_path, "C:/Windows/evil.ts")
-
-rejects("empty path", repository_path, "")
-
-print()
-print("=" * 80)
-print("FILES ARE WRITTEN")
-print("=" * 80)
-
-written = FileWriter.write_all(
-    repository_path,
+    "paths",
+    [item.path for item in files],
     [
-        FileGenerationResult(
-            relative_path=FileNaming.code_path(CODE),
-            content=CODE,
-            file_type=FileType.CODE,
-        ),
-        FileGenerationResult(
-            relative_path=FileNaming.test_path(CODE),
-            content=TESTS,
-            file_type=FileType.TEST,
-        ),
+        "src/notification.interface.ts",
+        "src/email.provider.ts",
+        "src/notification.service.ts",
     ],
 )
 
-check("two files written", len(written), 2)
+check(
+    "source is the default type",
+    files[0].file_type,
+    FileType.SOURCE,
+)
+
+check(
+    "the test type is honoured",
+    FileParser.parse(ANSWER, FileType.TEST)[0].file_type,
+    FileType.TEST,
+)
+
+check(
+    "prose and fences around the JSON",
+    len(
+        FileParser.parse(
+            f"Here you go:\n\n```json\n{ANSWER}\n```\n"
+        )
+    ),
+    3,
+)
+
+print()
+print("=" * 80)
+print("UNSAFE PATHS ARE REJECTED, NEVER REWRITTEN")
+print("=" * 80)
+
+for unsafe in (
+    "../escaped.ts",
+    "src/../../escaped.ts",
+    "/etc/passwd",
+    "C:/Windows/evil.ts",
+    "./../escaped.ts",
+):
+    check(
+        f"rejected {unsafe}",
+        FileParser.safe_path(unsafe),
+        None,
+    )
+
+check(
+    "a leading ./ is the only thing trimmed",
+    FileParser.safe_path("./src/a.ts"),
+    "src/a.ts",
+)
+
+check(
+    "an unsafe entry is dropped, the safe one kept",
+    [
+        item.path
+        for item in FileParser.parse(
+            '{"files":['
+            '{"path":"../escaped.ts","content":"x"},'
+            '{"path":"src/good.ts","content":"ok"}]}'
+        )
+    ],
+    ["src/good.ts"],
+)
+
+rejects("an answer with no JSON", "I could not do that.")
+
+rejects("an answer with no file list", '{"result":"ok"}')
+
+rejects("an empty file list", '{"files":[]}')
+
+print()
+print("=" * 80)
+print("EVERY FILE IS WRITTEN")
+print("=" * 80)
+
+repository_path = tempfile.mkdtemp()
+
+tests = FileParser.parse(
+    json.dumps(
+        {
+            "files": [
+                {
+                    "path": "tests/email.provider.test.ts",
+                    "content": "describe('EmailProvider', () => {});",
+                },
+            ]
+        }
+    ),
+    FileType.TEST,
+)
+
+written = [
+    FileWriter.write(
+        repository_path,
+        FileGenerationResult(
+            relative_path=item.path,
+            content=item.content,
+            file_type=item.file_type,
+        ),
+    )
+    for item in files + tests
+]
+
+check("four files written", len(written), 4)
 
 check(
     "folder structure created",
-    os.path.isfile(
-        os.path.join(
-            repository_path,
-            "src",
-            "services",
-            "notification.service.ts",
-        )
-    ),
-    True,
+    sorted(os.listdir(repository_path)),
+    ["src", "tests"],
 )
 
 check(
-    "test file created",
-    os.path.isfile(
-        os.path.join(
-            repository_path,
-            "tests",
-            "notification.service.test.ts",
+    "source files on disk",
+    sorted(
+        os.listdir(
+            os.path.join(repository_path, "src")
         )
     ),
-    True,
+    [
+        "email.provider.ts",
+        "notification.interface.ts",
+        "notification.service.ts",
+    ],
 )
 
 check(
-    "content readable from disk",
+    "content readable",
     FileWriter.read(
         repository_path,
-        "src/services/notification.service.ts",
+        "src/email.provider.ts",
     ),
-    CODE,
+    "export class EmailProvider {}",
 )
 
 FileWriter.write(
     repository_path,
     FileGenerationResult(
-        relative_path=FileNaming.code_path(CODE),
+        relative_path="src/email.provider.ts",
         content="export class V2 {}",
     ),
 )
 
 check(
-    "existing file is overwritten",
+    "an existing file is overwritten",
     FileWriter.read(
         repository_path,
-        "src/services/notification.service.ts",
+        "src/email.provider.ts",
     ),
     "export class V2 {}",
 )
@@ -177,39 +247,78 @@ database = os.path.join(
     "file_generation_test.db",
 )
 
-tasks = TaskRepository(database)
-
 task = Task(
     description="Create a notification system.",
-    generated_code=CODE,
-    generated_tests=TESTS,
+    repository_path=repository_path,
     generated_files=written,
 )
 
-tasks.save(task)
+TaskRepository(database).save(task)
 
 reloaded = TaskRepository(database).get_by_id(task.id)
 
 check(
-    "file paths persisted",
-    [item.file_path for item in reloaded.generated_files],
-    [
-        "src/services/notification.service.ts",
-        "tests/notification.service.test.ts",
+    "every path restored",
+    [item.path for item in reloaded.generated_files],
+    [item.path for item in written],
+)
+
+check(
+    "both types restored",
+    sorted(
+        {
+            item.file_type.value
+            for item in reloaded.generated_files
+        }
+    ),
+    ["source", "test"],
+)
+
+print()
+print("=" * 80)
+print("ROWS WRITTEN BEFORE THE RENAME STILL LOAD")
+print("=" * 80)
+
+check(
+    "the old CODE value maps to source",
+    FileType.parse("CODE"),
+    FileType.SOURCE,
+)
+
+check(
+    "the old TEST value maps to test",
+    FileType.parse("TEST"),
+    FileType.TEST,
+)
+
+legacy = Task(
+    description="legacy",
+    generated_files=[
+        GeneratedFile("src/a.ts", FileType.SOURCE),
     ],
 )
 
-check(
-    "file types persisted",
-    [item.file_type for item in reloaded.generated_files],
-    [FileType.CODE, FileType.TEST],
+TaskRepository(database).save(legacy)
+
+connection = TaskRepository(database).connection
+
+connection.execute(
+    "UPDATE tasks SET generated_files = ? WHERE id = ?",
+    (
+        '[{"path": "src/a.ts", "file_type": "CODE"}]',
+        legacy.id,
+    ),
 )
 
+connection.commit()
+
 check(
-    "a task may have no files",
+    "a legacy row loads as source",
     TaskRepository(database)
-    .get_by_id(Task().id),
-    None,
+    .get_by_id(legacy.id)
+    .generated_files[0]
+    .file_type,
+    FileType.SOURCE,
 )
 
 print()

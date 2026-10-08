@@ -1,9 +1,11 @@
 from models.architecture_review import (
     ArchitectureReview,
 )
+from models.generated_file import GeneratedFile
 from models.review_history import (
     ReviewHistory,
 )
+from services.file_bundle import FileBundle
 from services.llm_factory import (
     LLMFactory,
 )
@@ -34,7 +36,7 @@ class ArchitectAgent:
     def execute(
         self,
         task_description: str,
-        generated_code: str,
+        source_files: list[GeneratedFile],
         review_history: list[
             ReviewHistory
         ] | None = None,
@@ -58,9 +60,18 @@ Previous Reviews:
 
 {history_text}
 
+Project Structure:
+
+{FileBundle.structure(source_files)}
+
 Current Code:
 
-{generated_code}
+{FileBundle.render(source_files)}
+
+Review the project structure as well as the
+code. A file set should separate interfaces,
+services and providers, and each file should
+hold one logical component.
 
 Classify every finding by severity.
 
@@ -80,6 +91,8 @@ Always a BLOCKER, with no exception:
 - a requirement stated in the task is not
   implemented
 - a security vulnerability
+- a file imports something no file in the
+  set defines
 
 Also a BLOCKER: dependency inversion
 violations, broken abstraction boundaries,
@@ -92,7 +105,8 @@ Should be fixed, but does not make the
 implementation unacceptable. For example:
 missing logging, weak naming, missing
 documentation, limited extensibility,
-non-optimal design choices.
+non-optimal design choices, a file holding
+several unrelated components.
 
 SUGGESTION
 Optional improvement. For example: pattern

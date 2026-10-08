@@ -11,4 +11,4 @@ class FileGenerationResult:
 
     content: str
 
-    file_type: FileType = FileType.CODE
+    file_type: FileType = FileType.SOURCE

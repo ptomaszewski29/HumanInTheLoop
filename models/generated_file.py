@@ -5,10 +5,10 @@ from models.file_type import FileType
 
 @dataclass
 class GeneratedFile:
-    """A file the workflow actually wrote to a repository."""
+    """One file produced by the workflow."""
 
-    file_path: str
+    path: str
 
-    file_type: FileType = FileType.CODE
+    file_type: FileType = FileType.SOURCE
 
     content: str = ""

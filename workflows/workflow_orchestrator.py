@@ -5,18 +5,13 @@ from config.settings import Settings
 from models.file_generation_result import (
     FileGenerationResult,
 )
-from models.file_type import FileType
 from models.generated_file import GeneratedFile
 from models.review_history import (
     ReviewHistory,
 )
 from models.task import Task
 from models.task_status import TaskStatus
-from services.file_naming import FileNaming
 from services.file_writer import FileWriter
-from services.review_history_formatter import (
-    ReviewHistoryFormatter,
-)
 from workflows.review_decision import (
     ReviewDecision,
 )
@@ -44,11 +39,11 @@ class WorkflowOrchestrator:
 
         review_history: list[ReviewHistory] = []
 
-        generated_code = self.developer.execute(task_description)
+        source_files = self.developer.execute(task_description)
 
-        if not generated_code.strip():
+        if not source_files:
 
-            raise RuntimeError("DeveloperAgent returned empty code.")
+            raise RuntimeError("DeveloperAgent returned no files.")
 
         architecture_review = None
 
@@ -56,7 +51,7 @@ class WorkflowOrchestrator:
 
             architecture_review = self.architect.execute(
                 task_description,
-                generated_code,
+                source_files,
                 review_history,
             )
 
@@ -75,7 +70,7 @@ class WorkflowOrchestrator:
                 )
             )
 
-            # Only blockers send the code back to the
+            # Only blockers send the files back to the
             # developer. Warnings and suggestions are
             # recorded and shipped with the task.
             if not architecture_review.blockers:
@@ -84,48 +79,29 @@ class WorkflowOrchestrator:
             if architecture_review.recommendation == ReviewDecision.REJECT:
                 break
 
-            generated_code = self.developer.execute(f"""
-Improve the code according
-to architect feedback.
+            source_files = self.developer.improve(
+                task_description,
+                source_files,
+                architecture_review.review,
+            )
 
-Original task:
-
-{task_description}
-
-Fix every BLOCKER. Address the warnings
-only if that does not risk a blocker.
-Ignore the suggestions.
-
-{ReviewHistoryFormatter.open_findings(review_history)}
-
-Current implementation:
-
-{generated_code}
-
-Return only TypeScript code.
-""")
-
-        generated_tests = self.qa.execute(generated_code)
+        test_files = self.qa.execute(source_files)
 
         generated_files = self.write_files(
             repository_path,
-            task_description,
-            generated_code,
-            generated_tests,
+            source_files + test_files,
         )
 
         return Task(
             repository_id=repository_id,
             repository_path=repository_path,
             description=task_description,
-            generated_code=generated_code,
             architecture_review=architecture_review.review,
             architecture_score=architecture_review.score,
             recommendation=architecture_review.recommendation,
             blockers=architecture_review.blockers,
             warnings=architecture_review.warnings,
             suggestions=architecture_review.suggestions,
-            generated_tests=generated_tests,
             review_iterations=review_iterations,
             review_history=review_history,
             generated_files=generated_files,
@@ -135,44 +111,42 @@ Return only TypeScript code.
     def write_files(
         self,
         repository_path: str,
-        task_description: str,
-        generated_code: str,
-        generated_tests: str,
+        files: list[GeneratedFile],
     ) -> list[GeneratedFile]:
-        """Writes the run's artifacts into the repository.
+        """Writes the run's files into the repository.
 
         Nothing is written when no repository folder was
-        given, so the workflow still runs standalone.
+        given, so the workflow still runs standalone. A
+        file whose path is unsafe is skipped rather than
+        failing the whole run.
         """
 
         if not repository_path:
-            return []
+            return files
 
-        results = [
-            FileGenerationResult(
-                relative_path=FileNaming.code_path(
-                    generated_code,
-                    task_description,
-                ),
-                content=generated_code,
-                file_type=FileType.CODE,
-            ),
-        ]
+        written: list[GeneratedFile] = []
 
-        if generated_tests.strip():
+        for item in files:
 
-            results.append(
-                FileGenerationResult(
-                    relative_path=FileNaming.test_path(
-                        generated_code,
-                        task_description,
-                    ),
-                    content=generated_tests,
-                    file_type=FileType.TEST,
+            try:
+                written.append(
+                    FileWriter.write(
+                        repository_path,
+                        FileGenerationResult(
+                            relative_path=item.path,
+                            content=item.content,
+                            file_type=item.file_type,
+                        ),
+                    )
                 )
+
+            except ValueError as error:
+                print(f"SKIPPED {item.path}: {error}")
+
+        if not written:
+            raise RuntimeError(
+                "No generated file could be written to "
+                f"{repository_path}."
             )
 
-        return FileWriter.write_all(
-            repository_path,
-            results,
-        )
+        return written

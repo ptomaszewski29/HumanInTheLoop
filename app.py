@@ -9,6 +9,7 @@ from database.repository_repository import (
     same_path,
 )
 from database.task_repository import TaskRepository
+from models.file_type import FileType
 from models.repository import Repository
 from models.task import Task
 from models.task_status import TaskStatus
@@ -56,6 +57,38 @@ def resolve_repository(task_like):
             return candidate
 
     return None
+
+
+def file_content(root: str, generated) -> str | None:
+    """The file as it is on disk right now."""
+
+    if not root:
+        return None
+
+    return FileWriter.read(root, generated.path)
+
+
+def show_files(root: str, files, empty_message: str) -> None:
+
+    if not files:
+
+        st.info(empty_message)
+
+        return
+
+    for generated in files:
+
+        content = file_content(root, generated)
+
+        with st.expander(generated.path, expanded=True):
+
+            if content is None:
+
+                st.warning("File not found on disk any more.")
+
+            else:
+
+                st.code(content, language="typescript")
 
 
 def repository_label(task_like) -> str:
@@ -267,6 +300,14 @@ if st.session_state.task:
 
     st.write(f"**Repository:** {repository_label(task)}")
 
+    task_repository = resolve_repository(task)
+
+    task_root = (
+        task_repository.path
+        if task_repository is not None
+        else task.repository_path
+    )
+
     st.write(f"**Description:** {task.description}")
 
     metric_1, metric_2, metric_3 = st.columns(3)
@@ -341,7 +382,19 @@ if st.session_state.task:
 
     with tab_code:
 
-        if task.generated_code:
+        if task.generated_files:
+
+            show_files(
+                task_root,
+                [
+                    item
+                    for item in task.generated_files
+                    if item.file_type == FileType.SOURCE
+                ],
+                "No source files.",
+            )
+
+        elif task.generated_code:
 
             st.code(
                 task.generated_code,
@@ -411,7 +464,19 @@ if st.session_state.task:
 
     with tab_tests:
 
-        if task.generated_tests:
+        if task.generated_files:
+
+            show_files(
+                task_root,
+                [
+                    item
+                    for item in task.generated_files
+                    if item.file_type == FileType.TEST
+                ],
+                "No test files.",
+            )
+
+        elif task.generated_tests:
 
             st.code(
                 task.generated_tests,
@@ -424,13 +489,7 @@ if st.session_state.task:
 
     with tab_files:
 
-        task_repository = resolve_repository(task)
-
-        root = (
-            task_repository.path
-            if task_repository is not None
-            else task.repository_path
-        )
+        root = task_root
 
         if not task.generated_files:
 
@@ -444,7 +503,7 @@ if st.session_state.task:
             )
 
             for generated in task.generated_files:
-                st.write(f"`{generated.file_path}`")
+                st.write(f"`{generated.path}`")
 
         else:
 
@@ -460,14 +519,11 @@ if st.session_state.task:
 
             for generated in task.generated_files:
 
-                content = FileWriter.read(
-                    root,
-                    generated.file_path,
-                )
+                content = file_content(root, generated)
 
                 with st.expander(
                     f"{generated.file_type.value} · "
-                    f"{generated.file_path}",
+                    f"{generated.path}",
                     expanded=True,
                 ):
 

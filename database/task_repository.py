@@ -131,7 +131,7 @@ class TaskRepository:
         generated_files_json = json.dumps(
             [
                 {
-                    "path": item.file_path,
+                    "path": item.path,
                     "file_type": item.file_type.value,
                 }
                 for item in task.generated_files
@@ -228,9 +228,9 @@ class TaskRepository:
 
         return [
             GeneratedFile(
-                file_path=item["path"],
-                file_type=FileType(
-                    item.get("file_type", FileType.CODE.value)
+                path=item["path"],
+                file_type=FileType.parse(
+                    item.get("file_type", "")
                 ),
             )
             for item in items

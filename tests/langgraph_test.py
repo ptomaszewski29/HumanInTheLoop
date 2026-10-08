@@ -19,14 +19,14 @@ result = workflow.invoke(
             - interfaces
             - dependency inversion
             """,
-        "generated_code": "",
+        "source_files": [],
         "architecture_review": "",
         "architecture_score": 0,
         "recommendation": "",
         "blockers": [],
         "warnings": [],
         "suggestions": [],
-        "generated_tests": "",
+        "test_files": [],
         "review_iterations": 0,
         "review_history": [],
     }
@@ -61,3 +61,7 @@ print(f"iterations: {result['review_iterations']}")
 print(f"blockers: {result['blockers']}")
 print(f"warnings: {result['warnings']}")
 print(f"suggestions: {result['suggestions']}")
+print()
+print("FILES")
+for item in result["source_files"] + result["test_files"]:
+    print(f"  [{item.file_type.value}] {item.path}")

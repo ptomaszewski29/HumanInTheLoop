@@ -12,9 +12,10 @@ task = orchestrator.execute("Create a TypeScript email validator.")
 
 print()
 print("=" * 80)
-print("GENERATED CODE")
+print("GENERATED FILES")
 print("=" * 80)
-print(repr(task.generated_code))
+for item in task.generated_files:
+    print(f"  [{item.file_type.value}] {item.path}")
 
 print()
 print("=" * 80)
@@ -22,8 +23,4 @@ print("ARCHITECT REVIEW")
 print("=" * 80)
 print(repr(task.architecture_review))
 
-print()
-print("=" * 80)
-print("TESTS")
-print("=" * 80)
-print(repr(task.generated_tests))
+

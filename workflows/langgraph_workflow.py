@@ -7,9 +7,6 @@ from config.settings import Settings
 from models.review_history import (
     ReviewHistory,
 )
-from services.review_history_formatter import (
-    ReviewHistoryFormatter,
-)
 from workflows.graph_state import (
     GraphState,
 )
@@ -30,39 +27,24 @@ def developer_node(
 
     task_description = state["task_description"]
 
-    generated_code = state["generated_code"]
+    source_files = state["source_files"]
 
     architecture_review = state["architecture_review"]
 
-    if not generated_code or not architecture_review:
+    if not source_files or not architecture_review:
 
         return {
-            "generated_code": developer.execute(
+            "source_files": developer.execute(
                 task_description
             ),
         }
 
     return {
-        "generated_code": developer.execute(f"""
-Improve the code according
-to architect feedback.
-
-Original task:
-
-{task_description}
-
-Fix every BLOCKER. Address the warnings
-only if that does not risk a blocker.
-Ignore the suggestions.
-
-{ReviewHistoryFormatter.open_findings(state["review_history"])}
-
-Current implementation:
-
-{generated_code}
-
-Return only TypeScript code.
-"""),
+        "source_files": developer.improve(
+            task_description,
+            source_files,
+            architecture_review,
+        ),
     }
 
 
@@ -72,7 +54,7 @@ def architect_node(
 
     review = architect.execute(
         state["task_description"],
-        state["generated_code"],
+        state["source_files"],
         state["review_history"],
     )
 
@@ -105,10 +87,10 @@ def qa_node(
     state: GraphState,
 ) -> dict:
 
-    tests = qa.execute(state["generated_code"])
+    tests = qa.execute(state["source_files"])
 
     return {
-        "generated_tests": tests,
+        "test_files": tests,
     }
 
 

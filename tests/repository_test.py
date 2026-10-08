@@ -113,7 +113,6 @@ tasks = TaskRepository(database)
 task = Task(
     repository_id=frontend.id,
     description="Create a notification system.",
-    generated_code="export class S {}",
 )
 
 tasks.save(task)
