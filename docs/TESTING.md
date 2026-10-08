@@ -22,6 +22,12 @@ kept rather than dropped. A task may not depend on itself or on a task that
 does not exist. A truncated plan keeps what the model finished; an
 unusable answer fails loudly. Plans survive a restart.
 
+Execution is covered here too: a task is `READY` only when its dependencies
+are done, a failure is recorded with its reason and does not unblock what
+came after, retrying replaces the record rather than adding a second, and
+the dashboard counts agree with the statuses. A plan written before
+executions existed still reports its progress after the migration.
+
 ### `tests.issue_test`
 
 Issues are read without pull requests mixed in, commented on and relabelled.

@@ -5,6 +5,10 @@ from config.settings import Settings
 from models.github_issue import IssueLink
 from models.plan import Plan
 from models.task_breakdown import Priority, TaskBreakdown
+from models.task_execution import (
+    ExecutionStatus,
+    TaskExecution,
+)
 
 COLUMNS = (
     "id",
@@ -14,6 +18,7 @@ COLUMNS = (
     "epic",
     "tasks",
     "completed",
+    "executions",
     "issues",
     "created_at",
 )
@@ -25,6 +30,7 @@ PLACEHOLDERS = ", ".join("?" for _ in COLUMNS)
 # Columns added after the table first shipped, with the
 # definition used to retrofit an existing database.
 ADDED_COLUMNS = {
+    "executions": "TEXT NOT NULL DEFAULT '[]'",
     "issues": "TEXT NOT NULL DEFAULT '[]'",
     "requirement_id": "TEXT NOT NULL DEFAULT ''",
     "issue": "TEXT NOT NULL DEFAULT '{}'",
@@ -55,6 +61,7 @@ class PlanRepository:
                 epic TEXT NOT NULL,
                 tasks TEXT NOT NULL DEFAULT '[]',
                 completed TEXT NOT NULL DEFAULT '[]',
+                executions TEXT NOT NULL DEFAULT '[]',
                 issues TEXT NOT NULL DEFAULT '[]',
                 created_at TEXT NOT NULL
             )
@@ -102,6 +109,22 @@ class PlanRepository:
             ]
         )
 
+    def _executions_json(self, plan: Plan) -> str:
+
+        return json.dumps(
+            [
+                {
+                    "task_id": item.task_id,
+                    "status": item.status.value,
+                    "started_at": item.started_at,
+                    "completed_at": item.completed_at,
+                    "error": item.error,
+                    "task_record_id": item.task_record_id,
+                }
+                for item in plan.executions
+            ]
+        )
+
     def save(self, plan: Plan) -> None:
 
         cursor = self.connection.cursor()
@@ -131,6 +154,7 @@ class PlanRepository:
                 plan.epic,
                 self._tasks_json(plan),
                 json.dumps(plan.completed),
+                self._executions_json(plan),
                 json.dumps(plan.issues),
                 plan.created_at,
             ),
@@ -138,22 +162,22 @@ class PlanRepository:
 
         self.connection.commit()
 
-    def update_completed(
-        self,
-        plan_id: str,
-        completed: list[int],
-    ) -> None:
-        """Records which tasks of a plan have been run."""
+    def update_progress(self, plan: Plan) -> None:
+        """Records what has been attempted and how it went."""
 
         cursor = self.connection.cursor()
 
         cursor.execute(
             """
             UPDATE plans
-            SET completed = ?
+            SET executions = ?, completed = ?
             WHERE id = ?
             """,
-            (json.dumps(sorted(set(completed))), plan_id),
+            (
+                self._executions_json(plan),
+                json.dumps(plan.completed),
+                plan.id,
+            ),
         )
 
         self.connection.commit()
@@ -195,6 +219,50 @@ class PlanRepository:
             for item in json.loads(tasks_json or "[]")
         ]
 
+    def _parse_executions(
+        self,
+        executions_json: str,
+        completed_json: str,
+    ) -> list[TaskExecution]:
+        """Execution records, or a stand-in for old rows.
+
+        Plans saved before executions existed only knew
+        which tasks had finished, so those are turned into
+        completed records rather than losing the progress.
+        """
+
+        records = json.loads(executions_json or "[]")
+
+        if records:
+
+            return [
+                TaskExecution(
+                    task_id=int(item.get("task_id") or 0),
+                    status=ExecutionStatus.parse(
+                        item.get("status", "")
+                    ),
+                    started_at=item.get("started_at", ""),
+                    completed_at=item.get(
+                        "completed_at", ""
+                    ),
+                    error=item.get("error", ""),
+                    task_record_id=item.get(
+                        "task_record_id", ""
+                    ),
+                )
+                for item in records
+            ]
+
+        return [
+            TaskExecution(
+                task_id=int(task_id),
+                status=ExecutionStatus.COMPLETED,
+            )
+            for task_id in json.loads(
+                completed_json or "[]"
+            )
+        ]
+
     def _parse_issue(self, issue_json: str) -> IssueLink:
         data = json.loads(issue_json or "{}")
 
@@ -215,9 +283,12 @@ class PlanRepository:
             issue=self._parse_issue(row[3]),
             epic=row[4],
             tasks=self._parse_tasks(row[5]),
-            completed=json.loads(row[6] or "[]"),
-            issues=json.loads(row[7] or "[]"),
-            created_at=row[8],
+            executions=self._parse_executions(
+                row[7],
+                row[6],
+            ),
+            issues=json.loads(row[8] or "[]"),
+            created_at=row[9],
         )
 
     def get_all(self) -> list[Plan]:

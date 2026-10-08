@@ -135,8 +135,19 @@ started. Problems the planner found in its own breakdown — a self
 dependency, an unknown id, a cycle — are reported above the plan.
 
 Run them one at a time, or **⏩ Uruchom cały plan** to walk the whole plan in
-dependency order. Progress is saved, so you can close a plan and come back
-to it.
+dependency order, which stops at the first failure.
+
+A dashboard above the plan counts where it stands — total, completed,
+ready, blocked, failed — and every task carries a status:
+
+| | | |
+|---|---|---|
+| ▶️ `READY` | ⛔ `PENDING` | ⏳ `RUNNING` |
+| ✅ `COMPLETED` | ❌ `FAILED` | |
+
+Attempts are saved, not just successes. Close the app after a task fails
+and it is still failed when you return, with the reason, and the tasks that
+depended on it still blocked. **🔁 Uruchom ponownie** retries one.
 
 ### 4. Describe a task
 

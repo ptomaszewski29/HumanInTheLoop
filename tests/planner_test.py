@@ -64,7 +64,12 @@ from agents.planner_agent import (
     order_tasks,
 )
 from database.plan_repository import PlanRepository
+from models.plan import Plan
 from models.task_breakdown import Priority, TaskBreakdown
+from models.task_execution import (
+    ExecutionStatus,
+    TaskExecution,
+)
 
 failures: list[str] = []
 
@@ -415,7 +420,12 @@ check(
     [1],
 )
 
-plan.completed = [1]
+plan.record(
+    TaskExecution(
+        task_id=1,
+        status=ExecutionStatus.COMPLETED,
+    )
+)
 
 check(
     "the next one unlocks",
@@ -438,6 +448,137 @@ check(
     plan.task(1).prompt,
     "Create the notification interface\n\n"
     "Define the contract.",
+)
+
+print()
+print("=" * 80)
+print("EXECUTION IS TRACKED PER TASK")
+print("=" * 80)
+
+tracked = PlannerAgent().execute("Epic.")
+
+check(
+    "nothing attempted yet",
+    [
+        tracked.status_of(item).value
+        for item in tracked.tasks
+    ],
+    ["READY", "PENDING", "PENDING"],
+)
+
+check(
+    "the dashboard agrees",
+    {
+        key: value
+        for key, value in tracked.dashboard().items()
+        if value
+    },
+    {"PENDING": 2, "READY": 1, "TOTAL": 3},
+)
+
+check("nothing complete", tracked.percent_complete, 0.0)
+
+tracked.record(
+    TaskExecution(
+        task_id=1,
+        status=ExecutionStatus.COMPLETED,
+        started_at="2026-10-08T10:00:00+00:00",
+        completed_at="2026-10-08T10:02:00+00:00",
+    )
+)
+
+check(
+    "the first is done and the second unlocks",
+    [
+        tracked.status_of(item).value
+        for item in tracked.tasks
+    ],
+    ["COMPLETED", "READY", "PENDING"],
+)
+
+check(
+    "progress follows",
+    round(tracked.percent_complete, 2),
+    0.33,
+)
+
+check(
+    "a duration is reported",
+    tracked.execution(1).duration,
+    "2.0m",
+)
+
+tracked.record(
+    TaskExecution(
+        task_id=2,
+        status=ExecutionStatus.FAILED,
+        error="the developer returned no files",
+    )
+)
+
+check(
+    "a failure is remembered",
+    tracked.status_of(tracked.task(2)),
+    ExecutionStatus.FAILED,
+)
+
+check(
+    "and it does not unblock what came after",
+    tracked.status_of(tracked.task(3)),
+    ExecutionStatus.PENDING,
+)
+
+check(
+    "a failed task is still outstanding",
+    [item.id for item in tracked.remaining],
+    [2, 3],
+)
+
+check(
+    "the dashboard counts it",
+    tracked.dashboard()["FAILED"],
+    1,
+)
+
+tracked.record(
+    TaskExecution(
+        task_id=2,
+        status=ExecutionStatus.COMPLETED,
+    )
+)
+
+check(
+    "retrying replaces the record rather than adding one",
+    len(
+        [
+            item
+            for item in tracked.executions
+            if item.task_id == 2
+        ]
+    ),
+    1,
+)
+
+check(
+    "and the failure is gone",
+    tracked.dashboard()["FAILED"],
+    0,
+)
+
+check(
+    "a run interrupted mid-way reads as RUNNING",
+    Plan(
+        tasks=[TaskBreakdown(1, "a", "", Priority.HIGH)],
+        executions=[
+            TaskExecution(
+                task_id=1,
+                status=ExecutionStatus.RUNNING,
+            )
+        ],
+    )
+    .status_of(TaskBreakdown(1, "a", "", Priority.HIGH))
+    .value,
+    "RUNNING",
 )
 
 print()
@@ -478,6 +619,62 @@ check(
 
 check("progress restored", restored.completed, [1])
 
+store.save(tracked)
+
+recovered = PlanRepository(database).get_by_id(tracked.id)
+
+check(
+    "only attempted tasks have a record",
+    len(recovered.executions),
+    2,
+)
+
+check(
+    "an unattempted task has none",
+    recovered.execution(3),
+    None,
+)
+
+check(
+    "statuses restored",
+    [
+        recovered.status_of(item).value
+        for item in recovered.tasks
+    ],
+    [
+        tracked.status_of(item).value
+        for item in tracked.tasks
+    ],
+)
+
+check(
+    "timestamps restored",
+    recovered.execution(1).started_at,
+    "2026-10-08T10:00:00+00:00",
+)
+
+check(
+    "a failure's reason restored",
+    PlanRepository(database)
+    ._parse_executions(
+        '[{"task_id": 1, "status": "FAILED", '
+        '"error": "boom"}]',
+        "[]",
+    )[0]
+    .error,
+    "boom",
+)
+
+check(
+    "a plan saved before executions existed keeps its progress",
+    [
+        item.task_id
+        for item in PlanRepository(database)
+        ._parse_executions("[]", "[1, 2]")
+    ],
+    [1, 2],
+)
+
 check(
     "reported problems are restored too",
     PlanRepository(database)
@@ -500,7 +697,14 @@ check(
     3,
 )
 
-store.update_completed(plan.id, [1, 2])
+plan.record(
+    TaskExecution(
+        task_id=2,
+        status=ExecutionStatus.COMPLETED,
+    )
+)
+
+store.update_progress(plan)
 
 check(
     "progress updated",

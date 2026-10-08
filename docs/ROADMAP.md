@@ -51,6 +51,7 @@ What has been built, in the order it was built, and what the next step is.
 |---|---|
 | 9 | **Planner agent** — an epic becomes ordered tasks with dependencies and priorities, feeding the existing pipeline unchanged |
 | 9.1 | **Requirements workspace** — one place where work is described, and the planner's only input |
+| 9.5 | **Execution layer** — every attempt is recorded, failures survive a restart, and a plan reports where it stands |
 | 10 | **GitHub issues** — a backlog becomes requirements, and a pull request reports back to the issue it came from |
 
 ---
@@ -76,6 +77,12 @@ and the split enforced by filtering.
 **7A** — branches were cut from wherever HEAD happened to be, so the second
 task branched off the first. Found three sprints later, in a real
 repository, by looking at the commit graph.
+
+**9.5** — a failure that is not recorded is a failure that repeats. Before
+this, a task that blew up simply reappeared as ready: the UI could not tell
+"never tried" from "tried and broke". Deriving `READY`/`PENDING` is right,
+because the graph knows them; deriving `FAILED` is impossible, because only
+the run knows. Store the attempt, derive the rest.
 
 **10** — a message pushed into session state is invisible unless something
 on screen renders it. The second time this bit: a failure reported from the

@@ -90,6 +90,37 @@ step can run once the steps above it are done.
 **Run single task** runs one. **Run entire plan** walks the remaining tasks
 in order, stopping at the first failure so you can see what went wrong.
 
+### What a plan remembers
+
+Every attempt is recorded, not just the successes. A task that was started
+holds a status, when it began, when it ended, and — if it went wrong — why.
+
+| Status | Meaning |
+|---|---|
+| `PENDING` | a dependency has not completed yet; cannot be started |
+| `READY` | every dependency is done; the run button is enabled |
+| `RUNNING` | started and not yet finished |
+| `COMPLETED` | finished, and its dependents are now unblocked |
+| `FAILED` | it ran and did not finish; the reason is shown |
+
+Only `PENDING` and `READY` are worked out from the dependency graph. The
+other three are facts about a run that happened, so they are stored and
+survive a restart — a failure is still a failure after the app is closed,
+and the tasks that depended on it stay blocked.
+
+A failed task keeps a **Run again** button. Retrying replaces the old
+record rather than adding a second one, so the dashboard above the plan
+always counts each task once:
+
+```text
+Total   Completed   Ready   Blocked   Failed
+  7         3          1       2         1
+```
+
+A run interrupted part-way — the browser closed, the process killed —
+reads as `RUNNING` when you come back, which is honest: nobody knows
+whether it finished. It too offers **Run again**.
+
 ---
 
 ## The review loop

@@ -23,6 +23,10 @@ from models.pull_request_info import PullRequestState
 from models.repository import Repository
 from models.requirement import Requirement, now
 from models.task import Task
+from models.task_execution import (
+    ExecutionStatus,
+    TaskExecution,
+)
 from models.task_status import TaskStatus
 from models.test_result import TestStatus
 from services.file_writer import FileWriter
@@ -141,6 +145,66 @@ def run_task(
     repository.save(generated)
 
     return generated
+
+
+def execute_planned(plan, item, target_path):
+    """Runs one planned task, recording how it went.
+
+    A failure is written down, so re-opening the plan shows
+    what went wrong rather than offering the task again as
+    if nothing had happened.
+    """
+
+    plan.record(
+        TaskExecution(
+            task_id=item.id,
+            status=ExecutionStatus.RUNNING,
+            started_at=now(),
+        )
+    )
+
+    plan_store.update_progress(plan)
+
+    started = now()
+
+    try:
+
+        generated = run_task(
+            item.prompt,
+            plan.repository_id,
+            target_path,
+            plan.issue,
+        )
+
+    except Exception as error:
+
+        plan.record(
+            TaskExecution(
+                task_id=item.id,
+                status=ExecutionStatus.FAILED,
+                started_at=started,
+                completed_at=now(),
+                error=str(error),
+            )
+        )
+
+        plan_store.update_progress(plan)
+
+        return None, str(error)
+
+    plan.record(
+        TaskExecution(
+            task_id=item.id,
+            status=ExecutionStatus.COMPLETED,
+            started_at=started,
+            completed_at=now(),
+            task_record_id=generated.id,
+        )
+    )
+
+    plan_store.update_progress(plan)
+
+    return generated, ""
 
 
 def repository_label(task_like) -> str:
@@ -620,12 +684,39 @@ if st.session_state.plan:
                     f"[{item.priority.value}]{after}"
                 )
 
-    done = len(plan.completed)
+    counts = plan.dashboard()
 
     st.progress(
-        done / len(plan.tasks) if plan.tasks else 0.0,
-        text=f"{done} / {len(plan.tasks)} ukończonych",
+        plan.percent_complete,
+        text=(
+            f"{counts['COMPLETED']} / {counts['TOTAL']} "
+            f"ukończonych "
+            f"({plan.percent_complete * 100:.0f}%)"
+        ),
     )
+
+    (
+        board_1,
+        board_2,
+        board_3,
+        board_4,
+        board_5,
+    ) = st.columns(5)
+
+    with board_1:
+        st.metric("Total", counts["TOTAL"])
+
+    with board_2:
+        st.metric("Completed", counts["COMPLETED"])
+
+    with board_3:
+        st.metric("Ready", counts["READY"])
+
+    with board_4:
+        st.metric("Blocked", counts["PENDING"])
+
+    with board_5:
+        st.metric("Failed", counts["FAILED"])
 
     target_path = (
         repositories_by_id[
@@ -635,22 +726,30 @@ if st.session_state.plan:
         else ""
     )
 
+    marks = {
+        ExecutionStatus.COMPLETED: "✅",
+        ExecutionStatus.FAILED: "❌",
+        ExecutionStatus.RUNNING: "⏳",
+        ExecutionStatus.PENDING: "⛔",
+        ExecutionStatus.READY: "▶️",
+    }
+
     for item in plan.tasks:
 
         blocked = plan.blocked_by(item)
 
-        if plan.is_done(item.id):
-            state = "✅"
-        elif blocked:
-            state = "⛔"
-        else:
-            state = "▶️"
+        status = plan.status_of(item)
+
+        record = plan.execution(item.id)
 
         with st.expander(
-            f"{state} {item.id}. {item.title} "
-            f"[{item.priority.value}]",
-            expanded=not plan.is_done(item.id)
-            and not blocked,
+            f"{marks[status]} {item.id}. {item.title} "
+            f"[{item.priority.value}] · {status.value}",
+            expanded=status
+            in (
+                ExecutionStatus.READY,
+                ExecutionStatus.FAILED,
+            ),
         ):
 
             if item.description:
@@ -670,45 +769,76 @@ if st.session_state.plan:
                     + ", ".join(str(d) for d in blocked)
                 )
 
-            if plan.is_done(item.id):
+            if record and record.started_at:
+
+                when = record.completed_at or record.started_at
+
+                st.caption(
+                    f"{record.status.value} · {when[:19]}"
+                    + (
+                        f" · {record.duration}"
+                        if record.duration
+                        else ""
+                    )
+                )
+
+            if status == ExecutionStatus.COMPLETED:
+
                 st.success("Wykonane.")
 
-            elif st.button(
-                "▶️ Uruchom to zadanie",
-                key=f"run-{plan.id}-{item.id}",
-                disabled=bool(blocked)
-                or not target_path,
-            ):
+            else:
 
-                with st.spinner(
-                    f"🤖 {item.title} ..."
-                ):
+                if status == ExecutionStatus.FAILED:
 
-                    try:
-
-                        generated = run_task(
-                            item.prompt,
-                            plan.repository_id,
-                            target_path,
-                            plan.issue,
-                        )
-
-                    except Exception as error:
-
-                        st.error(
-                            f"Workflow failed: {error}"
-                        )
-
-                        st.stop()
-
-                    plan.completed.append(item.id)
-
-                    plan_store.update_completed(
-                        plan.id,
-                        plan.completed,
+                    st.error(
+                        f"Nie powiodło się: {record.error}"
                     )
 
-                    st.session_state.task = generated
+                elif status == ExecutionStatus.RUNNING:
+
+                    st.warning(
+                        "Oznaczone jako uruchomione. Jeśli "
+                        "aplikacja została przerwana, "
+                        "uruchom ponownie."
+                    )
+
+                if st.button(
+                    "🔁 Uruchom ponownie"
+                    if status
+                    in (
+                        ExecutionStatus.FAILED,
+                        ExecutionStatus.RUNNING,
+                    )
+                    else "▶️ Uruchom to zadanie",
+                    key=f"run-{plan.id}-{item.id}",
+                    disabled=bool(blocked)
+                    or not target_path,
+                ):
+
+                    with st.spinner(
+                        f"🤖 {item.title} ..."
+                    ):
+
+                        generated, problem = (
+                            execute_planned(
+                                plan,
+                                item,
+                                target_path,
+                            )
+                        )
+
+                    if problem:
+
+                        st.session_state.git_message = (
+                            "warning",
+                            (
+                                f"Zadanie {item.id} nie powiodło się: {problem}"
+                            ),
+                        )
+
+                    else:
+
+                        st.session_state.task = generated
 
                     st.rerun()
 
@@ -727,52 +857,46 @@ if st.session_state.plan:
             disabled=not ready or not target_path,
         ):
 
-            # Tasks are already in dependency order, so
-            # running them in sequence respects the graph.
+            # Tasks are already in dependency order, and a
+            # failure stops the run: everything after it
+            # would be building on work that is not there.
             for item in list(plan.remaining):
 
                 if not plan.is_ready(item):
 
-                    st.warning(
-                        f"Pominięto {item.id}: czeka na "
+                    st.session_state.git_message = (
+                        "warning",
+                        f"Zatrzymano przed zadaniem {item.id}: czeka na "
                         + ", ".join(
                             str(d)
                             for d in plan.blocked_by(item)
-                        )
+                        ),
                     )
 
-                    continue
+                    break
 
                 with st.spinner(
                     f"🤖 {item.id}. {item.title} ..."
                 ):
 
-                    try:
-
-                        generated = run_task(
-                            item.prompt,
-                            plan.repository_id,
-                            target_path,
-                            plan.issue,
-                        )
-
-                    except Exception as error:
-
-                        st.error(
-                            f"Zatrzymano na zadaniu "
-                            f"{item.id}: {error}"
-                        )
-
-                        break
-
-                    plan.completed.append(item.id)
-
-                    plan_store.update_completed(
-                        plan.id,
-                        plan.completed,
+                    generated, problem = execute_planned(
+                        plan,
+                        item,
+                        target_path,
                     )
 
-                    st.session_state.task = generated
+                if problem:
+
+                    st.session_state.git_message = (
+                        "warning",
+                        (
+                            f"Zatrzymano na zadaniu {item.id}: {problem}"
+                        ),
+                    )
+
+                    break
+
+                st.session_state.task = generated
 
             st.rerun()
 

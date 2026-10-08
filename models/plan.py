@@ -4,6 +4,10 @@ from uuid import uuid4
 
 from models.github_issue import IssueLink
 from models.task_breakdown import TaskBreakdown
+from models.task_execution import (
+    ExecutionStatus,
+    TaskExecution,
+)
 
 
 @dataclass
@@ -24,8 +28,12 @@ class Plan:
         default_factory=list
     )
 
-    # Task ids already run through the pipeline.
-    completed: list[int] = field(default_factory=list)
+    # What happened to each task that has been attempted.
+    # The single record of progress: 'completed' below is
+    # derived from it rather than stored beside it.
+    executions: list[TaskExecution] = field(
+        default_factory=list
+    )
 
     # Problems found in the breakdown the model proposed:
     # self-dependencies, unknown ids, cycles. Reported
@@ -47,22 +55,100 @@ class Plan:
 
         return None
 
+    def execution(
+        self,
+        task_id: int,
+    ) -> TaskExecution | None:
+
+        for item in self.executions:
+
+            if item.task_id == task_id:
+                return item
+
+        return None
+
+    def record(self, execution: TaskExecution) -> None:
+        """Keeps one record per task, the latest winning."""
+
+        self.executions = [
+            item
+            for item in self.executions
+            if item.task_id != execution.task_id
+        ]
+
+        self.executions.append(execution)
+
+    @property
+    def completed(self) -> list[int]:
+        """The tasks that finished, in id order."""
+
+        return sorted(
+            item.task_id
+            for item in self.executions
+            if item.done
+        )
+
     def is_done(self, task_id: int) -> bool:
 
-        return task_id in self.completed
+        execution = self.execution(task_id)
+
+        return execution is not None and execution.done
+
+    def status_of(
+        self,
+        item: TaskBreakdown,
+    ) -> ExecutionStatus:
+        """What the dashboard and the buttons go by."""
+
+        execution = self.execution(item.id)
+
+        if execution is not None and execution.status in (
+            ExecutionStatus.COMPLETED,
+            ExecutionStatus.FAILED,
+            ExecutionStatus.RUNNING,
+        ):
+            return execution.status
+
+        if self.blocked_by(item):
+            return ExecutionStatus.PENDING
+
+        return ExecutionStatus.READY
+
+    def dashboard(self) -> dict[str, int]:
+        """Totals for every status, including zeros."""
+
+        counts = {
+            status.value: 0 for status in ExecutionStatus
+        }
+
+        for item in self.tasks:
+            counts[self.status_of(item).value] += 1
+
+        counts["TOTAL"] = len(self.tasks)
+
+        return counts
+
+    @property
+    def percent_complete(self) -> float:
+
+        if not self.tasks:
+            return 0.0
+
+        return len(self.completed) / len(self.tasks)
 
     @property
     def started(self) -> bool:
 
-        return bool(self.completed)
+        return bool(self.executions)
 
     @property
     def remaining(self) -> list[TaskBreakdown]:
+        """Everything not yet finished, failures included."""
 
         return [
             item
             for item in self.tasks
-            if item.id not in self.completed
+            if not self.is_done(item.id)
         ]
 
     def blocked_by(
@@ -74,7 +160,7 @@ class Plan:
         return [
             dependency
             for dependency in item.dependencies
-            if dependency not in self.completed
+            if not self.is_done(dependency)
         ]
 
     def is_ready(self, item: TaskBreakdown) -> bool:

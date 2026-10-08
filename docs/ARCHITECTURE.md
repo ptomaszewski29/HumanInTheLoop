@@ -53,6 +53,9 @@ cycle without being reported: each of those is recorded on the plan and
 shown, rather than quietly repaired. A truncated answer keeps the tasks the
 model finished rather than being discarded.
 
+Execution is tracked per task — see `models/task_execution.py`. The planner
+decides what *may* run; the plan records what *did*.
+
 Owns: what a task *is*.
 Does not own: anything about the code that task produces.
 
@@ -206,11 +209,19 @@ the status.
 single entry point: typed by hand, or imported from an issue. The planner
 reads this and nothing else.
 
-**`Plan`** — a requirement, the tasks the planner carved out of it, and
-which of them have already run.
+**`Plan`** — a requirement, the tasks the planner carved out of it, and a
+`TaskExecution` for each one that has been attempted.
 
-Both persist to SQLite (`database/`). Columns are added by a migration that
-runs on startup, so an older database keeps working.
+**`TaskExecution`** — one attempt: its status, when it started, when it
+ended, the error if it failed, and the `Task` row it produced. A task with
+no record has not been attempted, and its status is worked out from the
+dependency graph instead. Which tasks are `completed` is derived from these
+records rather than stored separately, so the two cannot drift apart.
+
+These persist to SQLite (`database/`). Columns are added by a migration
+that runs on startup, so an older database keeps working — a plan saved
+before executions existed has its completed list read back as a set of
+`COMPLETED` records, and loses nothing.
 
 ---
 
