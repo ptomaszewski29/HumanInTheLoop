@@ -3,25 +3,17 @@ import re
 from models.architecture_review import (
     ArchitectureReview,
 )
-from services.llm_factory import LLMFactory
+from models.review_history import (
+    ReviewHistory,
+)
+from services.llm_factory import (
+    LLMFactory,
+)
+from services.review_history_formatter import (
+    ReviewHistoryFormatter,
+)
 from workflows.review_decision import (
     ReviewDecision,
-)
-
-SCORE_PATTERN = re.compile(
-    r"SCORE\s*:\s*(\d{1,3})",
-    re.IGNORECASE,
-)
-
-RECOMMENDATION_PATTERN = re.compile(
-    r"RECOMMENDATION\s*:\s*"
-    r"(APPROVE|REQUEST_CHANGES|REJECT)",
-    re.IGNORECASE,
-)
-
-REVIEW_PATTERN = re.compile(
-    r"REVIEW\s*:\s*(.+)",
-    re.IGNORECASE | re.DOTALL,
 )
 
 
@@ -29,108 +21,161 @@ class ArchitectAgent:
     def __init__(
         self,
     ) -> None:
-        self.llm = LLMFactory.create()
+
+        self.llm = (
+            LLMFactory.create()
+        )
 
     def execute(
         self,
         task_description: str,
         generated_code: str,
+        review_history: list[
+            ReviewHistory
+        ] | None = None,
     ) -> ArchitectureReview:
 
-        prompt = f"""
-You are a senior software architect
-reviewing TypeScript code.
+        history = review_history or []
 
-Judge correctness, edge cases, typing,
-naming and maintainability.
+        history_text = (
+            ReviewHistoryFormatter.format(
+                history
+            )
+        )
+
+        prompt = f"""
+You are a Senior Software Architect.
 
 Task:
 {task_description}
 
-Code:
+Previous Reviews:
+
+{history_text}
+
+Current Code:
+
 {generated_code}
 
-Answer in exactly this format:
+Your responsibility:
 
-SCORE: <integer between 0 and 100>
-RECOMMENDATION: <APPROVE or REQUEST_CHANGES or REJECT>
-REVIEW:
-- <finding>
-- <finding>
-- <finding>
+1. Decide which previous findings are now resolved.
+2. Decide which previous findings are still unresolved.
+3. Identify new findings only if they really exist.
+4. Decide whether the implementation can be approved.
+
+Review the code critically. Check that
+every requirement in the task is actually
+implemented, that the code would compile
+and run, and that the stated design
+principles are really applied.
 
 Rules:
-- maximum 6 bullet points
-- each bullet is one sentence
-- name a concrete strength or a concrete risk
-- no code in the answer
+
+- If there are no previous reviews, this is
+  a first review: review the code from
+  scratch, leave Resolved Findings as
+  "None", and list every real problem you
+  find under New Findings.
+- Otherwise, take every finding listed in
+  the most recent previous review one by
+  one and decide its fate: each one goes
+  either under Resolved Findings or under
+  Remaining Findings. Never silently drop
+  a previous finding.
+- A finding is resolved as soon as the
+  current code addresses it, even if the
+  solution is not perfect. Do not repeat a
+  finding as unresolved if the current code
+  already fixes it.
+- New Findings is only for problems that no
+  previous review mentioned.
+- Raise the score when findings are resolved.
+- Recommend APPROVE only when no finding
+  blocks the task requirements. Never
+  approve code that is broken or ignores a
+  stated requirement.
+- Use REQUEST_CHANGES whenever at least one
+  blocking finding remains.
+- Reserve a score above 90 for code you
+  would merge unchanged.
+- Report "None" under a heading only when
+  that heading genuinely has no entries.
+
+Return exactly in this format:
+
+SCORE: <0-100>
+
+RECOMMENDATION:
+<APPROVE|REQUEST_CHANGES|REJECT>
+
+REVIEW:
+
+Resolved Findings:
+- finding
+
+Remaining Findings:
+- finding
+
+New Findings:
+- finding
 """
 
-        result = self.llm.generate_text(prompt)
+        raw_review = (
+            self.llm.generate_text(
+                prompt
+            )
+        )
 
-        review = self.parse(result)
+        score_match = re.search(
+            r"SCORE:\s*(\d+)",
+            raw_review,
+        )
+
+        recommendation_match = (
+            re.search(
+                (
+                    r"RECOMMENDATION:\s*"
+                    r"(APPROVE|REQUEST_CHANGES|REJECT)"
+                ),
+                raw_review,
+            )
+        )
+
+        score = (
+            int(score_match.group(1))
+            if score_match
+            else 0
+        )
+
+        recommendation = (
+            ReviewDecision(
+                recommendation_match.group(
+                    1
+                )
+            )
+            if recommendation_match
+            else ReviewDecision.UNKNOWN
+        )
+
+        review_text = (
+            raw_review.split(
+                "REVIEW:"
+            )[-1].strip()
+        )
 
         print("=" * 80)
-        print("ARCHITECT RAW RESULT")
+        print(
+            "ARCHITECT RAW RESULT "
+            f"(iteration {len(history) + 1}, "
+            f"{len(history)} previous reviews)"
+        )
         print("=" * 80)
-        print(repr(result))
+        print(raw_review)
         print("=" * 80)
-
-        return review
-
-    def parse(
-        self,
-        result: str,
-    ) -> ArchitectureReview:
-        """Turn the raw answer into a structured review.
-
-        Falls back to the raw text so a model that ignores
-        the format still produces a usable review.
-        """
 
         return ArchitectureReview(
-            score=self.parse_score(result),
-            recommendation=self.parse_recommendation(result),
-            review=self.parse_review(result),
+            score=score,
+            recommendation=recommendation,
+            review=review_text,
         )
-
-    def parse_score(
-        self,
-        result: str,
-    ) -> int:
-
-        match = SCORE_PATTERN.search(result)
-
-        if match is None:
-            return 0
-
-        return min(
-            int(match.group(1)),
-            100,
-        )
-
-    def parse_recommendation(
-        self,
-        result: str,
-    ) -> ReviewDecision:
-
-        match = RECOMMENDATION_PATTERN.search(result)
-
-        if match is None:
-            return ReviewDecision.UNKNOWN
-
-        return ReviewDecision(
-            match.group(1).upper()
-        )
-
-    def parse_review(
-        self,
-        result: str,
-    ) -> str:
-
-        match = REVIEW_PATTERN.search(result)
-
-        if match is None:
-            return result.strip()
-
-        return match.group(1).strip()

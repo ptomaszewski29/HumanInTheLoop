@@ -42,8 +42,11 @@ with st.sidebar:
             st.rerun()
 
 if st.session_state.task is None:
+
     st.info("Status: NEW")
+
 else:
+
     st.info(f"Status: {st.session_state.task.status.value}")
 
 task_description = st.text_area("Opisz zadanie dla AI")
@@ -107,10 +110,16 @@ if st.session_state.task:
 
         st.progress(task.architecture_score / 100)
 
-    tab_code, tab_review, tab_tests = st.tabs(
+    (
+        tab_code,
+        tab_review,
+        tab_history,
+        tab_tests,
+    ) = st.tabs(
         [
             "💻 Code",
             "🏛 Architecture Review",
+            "📜 Review History",
             "🧪 Tests",
         ]
     )
@@ -137,6 +146,26 @@ if st.session_state.task:
         else:
 
             st.info("No architecture review available.")
+
+    with tab_history:
+
+        if task.review_history:
+
+            for review in task.review_history:
+
+                st.subheader(f"Iteration {review.iteration}")
+
+                st.write(f"Score: {review.score}")
+
+                st.write("Recommendation: " f"{review.recommendation.value}")
+
+                st.markdown(review.review)
+
+                st.divider()
+
+        else:
+
+            st.info("No review history.")
 
     with tab_tests:
 

@@ -2,6 +2,9 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from models.review_history import (
+    ReviewHistory,
+)
 from models.task_status import TaskStatus
 from workflows.review_decision import (
     ReviewDecision,
@@ -25,6 +28,8 @@ class Task:
     recommendation: ReviewDecision = ReviewDecision.UNKNOWN
 
     review_iterations: int = 0
+
+    review_history: list[ReviewHistory] = field(default_factory=list)
 
     status: TaskStatus = TaskStatus.NEW
 
