@@ -1,7 +1,19 @@
+import os
 import sqlite3
 
 from config.settings import Settings
 from models.repository import Repository
+
+
+def same_path(left: str, right: str) -> bool:
+    """True when two spellings point at one folder."""
+
+    if not left or not right:
+        return False
+
+    return os.path.normcase(
+        os.path.abspath(left)
+    ) == os.path.normcase(os.path.abspath(right))
 
 COLUMNS = (
     "id",
@@ -115,6 +127,19 @@ class RepositoryRepository:
             return None
 
         return self._to_repository(row)
+
+    def get_by_path(
+        self,
+        path: str,
+    ) -> Repository | None:
+        """The repository for a folder, however it is typed."""
+
+        for repository in self.get_all():
+
+            if same_path(repository.path, path):
+                return repository
+
+        return None
 
     def delete(
         self,

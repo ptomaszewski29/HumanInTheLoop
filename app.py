@@ -6,11 +6,13 @@ from dotenv import load_dotenv
 from config.settings import Settings
 from database.repository_repository import (
     RepositoryRepository,
+    same_path,
 )
 from database.task_repository import TaskRepository
 from models.repository import Repository
 from models.task import Task
 from models.task_status import TaskStatus
+from services.file_writer import FileWriter
 from workflows.workflow_orchestrator import (
     WorkflowOrchestrator,
 )
@@ -32,17 +34,44 @@ repositories = repository_store.get_all()
 repositories_by_id = {item.id: item for item in repositories}
 
 
-def repository_label(repository_id: str) -> str:
+def resolve_repository(task_like):
+    """The repository a task belongs to.
 
-    if not repository_id:
-        return "None"
+    The stored id wins. When that row is gone, the folder
+    the files were written to is matched instead, so a
+    repository that is removed and added again still
+    reconnects to its tasks.
+    """
 
-    selected = repositories_by_id.get(repository_id)
+    found = repositories_by_id.get(
+        task_like.repository_id
+    )
 
-    if selected is None:
+    if found is not None:
+        return found
+
+    for candidate in repositories:
+
+        if same_path(candidate.path, task_like.repository_path):
+            return candidate
+
+    return None
+
+
+def repository_label(task_like) -> str:
+
+    found = resolve_repository(task_like)
+
+    if found is not None:
+        return found.name
+
+    if task_like.repository_path:
+        return f"{task_like.repository_path} (not registered)"
+
+    if task_like.repository_id:
         return "Deleted repository"
 
-    return selected.name
+    return "None"
 
 st.title(Settings.PAGE_TITLE)
 
@@ -58,7 +87,9 @@ with st.sidebar:
         st.session_state.repository_id = st.selectbox(
             "Active repository",
             [item.id for item in repositories],
-            format_func=repository_label,
+            format_func=lambda item_id: (
+                repositories_by_id[item_id].name
+            ),
             index=[item.id for item in repositories].index(
                 st.session_state.repository_id
             ),
@@ -79,11 +110,24 @@ with st.sidebar:
             1
             for item in repository.get_all()
             if item.repository_id == active_repository.id
+            or same_path(
+                item.repository_path,
+                active_repository.path,
+            )
         )
 
+        confirmed = True
+
+        if linked_tasks:
+
+            confirmed = st.checkbox(
+                f"Remove anyway ({linked_tasks} task(s) linked)",
+            )
+
         if st.button(
-            f"🗑 Remove ({linked_tasks} task(s) linked)",
+            "🗑 Remove",
             use_container_width=True,
+            disabled=not confirmed,
         ):
 
             repository_store.delete(active_repository.id)
@@ -110,6 +154,10 @@ with st.sidebar:
             if not new_name.strip() or not new_path.strip():
 
                 st.error("Name and path are both required.")
+
+            elif repository_store.get_by_path(new_path.strip()):
+
+                st.error("That folder is already registered.")
 
             else:
 
@@ -156,7 +204,7 @@ if st.session_state.repository_id:
 
     st.caption(
         "Repository: "
-        f"{repository_label(st.session_state.repository_id)}"
+        f"{repositories_by_id[st.session_state.repository_id].name}"
     )
 
 else:
@@ -172,6 +220,19 @@ if st.button(
     disabled=not st.session_state.repository_id,
 ) and task_description:
 
+    target_path = repositories_by_id[
+        st.session_state.repository_id
+    ].path
+
+    if not os.path.isdir(target_path):
+
+        st.error(
+            "Repository folder does not exist, so no files "
+            f"could be written: {target_path}"
+        )
+
+        st.stop()
+
     with st.spinner("🤖 Developer → Architect → QA ..."):
 
         try:
@@ -179,6 +240,7 @@ if st.button(
             generated_task = orchestrator.execute(
                 task_description,
                 st.session_state.repository_id,
+                target_path,
             )
 
         except Exception as error:
@@ -203,10 +265,7 @@ if st.session_state.task:
 
     st.write(f"**Status:** {task.status.value}")
 
-    st.write(
-        "**Repository:** "
-        f"{repository_label(task.repository_id)}"
-    )
+    st.write(f"**Repository:** {repository_label(task)}")
 
     st.write(f"**Description:** {task.description}")
 
@@ -269,12 +328,14 @@ if st.session_state.task:
         tab_review,
         tab_history,
         tab_tests,
+        tab_files,
     ) = st.tabs(
         [
             "💻 Code",
             "🏛 Architecture Review",
             "📜 Review History",
             "🧪 Tests",
+            "📂 Generated Files",
         ]
     )
 
@@ -360,6 +421,68 @@ if st.session_state.task:
         else:
 
             st.info("No tests available.")
+
+    with tab_files:
+
+        task_repository = resolve_repository(task)
+
+        root = (
+            task_repository.path
+            if task_repository is not None
+            else task.repository_path
+        )
+
+        if not task.generated_files:
+
+            st.info("No files were written for this task.")
+
+        elif not root:
+
+            st.warning(
+                "This task did not record where its files "
+                "were written, so they cannot be read."
+            )
+
+            for generated in task.generated_files:
+                st.write(f"`{generated.file_path}`")
+
+        else:
+
+            st.caption(f"Written to {root}")
+
+            if task_repository is None:
+
+                st.info(
+                    "This folder is not registered as a "
+                    "repository any more, but its files are "
+                    "still readable."
+                )
+
+            for generated in task.generated_files:
+
+                content = FileWriter.read(
+                    root,
+                    generated.file_path,
+                )
+
+                with st.expander(
+                    f"{generated.file_type.value} · "
+                    f"{generated.file_path}",
+                    expanded=True,
+                ):
+
+                    if content is None:
+
+                        st.warning(
+                            "File not found on disk any more."
+                        )
+
+                    else:
+
+                        st.code(
+                            content,
+                            language="typescript",
+                        )
 
     st.divider()
 

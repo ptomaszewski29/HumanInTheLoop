@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from models.generated_file import GeneratedFile
 from models.review_history import (
     ReviewHistory,
 )
@@ -16,6 +17,10 @@ class Task:
     id: str = field(default_factory=lambda: str(uuid4()))
 
     repository_id: str = ""
+
+    # Kept alongside the id so a task can still find its
+    # files after the repository row is deleted.
+    repository_path: str = ""
 
     description: str = ""
 
@@ -38,6 +43,8 @@ class Task:
     review_iterations: int = 0
 
     review_history: list[ReviewHistory] = field(default_factory=list)
+
+    generated_files: list[GeneratedFile] = field(default_factory=list)
 
     status: TaskStatus = TaskStatus.NEW
 

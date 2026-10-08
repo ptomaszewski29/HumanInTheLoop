@@ -2,11 +2,18 @@ from agents.architect_agent import ArchitectAgent
 from agents.developer_agent import DeveloperAgent
 from agents.qa_agent import QAAgent
 from config.settings import Settings
+from models.file_generation_result import (
+    FileGenerationResult,
+)
+from models.file_type import FileType
+from models.generated_file import GeneratedFile
 from models.review_history import (
     ReviewHistory,
 )
 from models.task import Task
 from models.task_status import TaskStatus
+from services.file_naming import FileNaming
+from services.file_writer import FileWriter
 from services.review_history_formatter import (
     ReviewHistoryFormatter,
 )
@@ -30,6 +37,7 @@ class WorkflowOrchestrator:
         self,
         task_description: str,
         repository_id: str = "",
+        repository_path: str = "",
     ) -> Task:
 
         review_iterations = 0
@@ -99,8 +107,16 @@ Return only TypeScript code.
 
         generated_tests = self.qa.execute(generated_code)
 
+        generated_files = self.write_files(
+            repository_path,
+            task_description,
+            generated_code,
+            generated_tests,
+        )
+
         return Task(
             repository_id=repository_id,
+            repository_path=repository_path,
             description=task_description,
             generated_code=generated_code,
             architecture_review=architecture_review.review,
@@ -112,5 +128,51 @@ Return only TypeScript code.
             generated_tests=generated_tests,
             review_iterations=review_iterations,
             review_history=review_history,
+            generated_files=generated_files,
             status=TaskStatus.WAITING_FOR_APPROVAL,
+        )
+
+    def write_files(
+        self,
+        repository_path: str,
+        task_description: str,
+        generated_code: str,
+        generated_tests: str,
+    ) -> list[GeneratedFile]:
+        """Writes the run's artifacts into the repository.
+
+        Nothing is written when no repository folder was
+        given, so the workflow still runs standalone.
+        """
+
+        if not repository_path:
+            return []
+
+        results = [
+            FileGenerationResult(
+                relative_path=FileNaming.code_path(
+                    generated_code,
+                    task_description,
+                ),
+                content=generated_code,
+                file_type=FileType.CODE,
+            ),
+        ]
+
+        if generated_tests.strip():
+
+            results.append(
+                FileGenerationResult(
+                    relative_path=FileNaming.test_path(
+                        generated_code,
+                        task_description,
+                    ),
+                    content=generated_tests,
+                    file_type=FileType.TEST,
+                )
+            )
+
+        return FileWriter.write_all(
+            repository_path,
+            results,
         )

@@ -2,6 +2,8 @@ import json
 import sqlite3
 
 from config.settings import Settings
+from models.file_type import FileType
+from models.generated_file import GeneratedFile
 from models.review_history import ReviewHistory
 from models.task import Task
 from models.task_status import TaskStatus
@@ -12,6 +14,7 @@ from workflows.review_decision import (
 COLUMNS = (
     "id",
     "repository_id",
+    "repository_path",
     "description",
     "generated_code",
     "architecture_review",
@@ -23,6 +26,7 @@ COLUMNS = (
     "suggestions",
     "review_history",
     "review_iterations",
+    "generated_files",
     "status",
     "created_at",
 )
@@ -35,12 +39,14 @@ PLACEHOLDERS = ", ".join("?" for _ in COLUMNS)
 # definition used to retrofit older databases.
 ADDED_COLUMNS = {
     "repository_id": "TEXT NOT NULL DEFAULT ''",
+    "repository_path": "TEXT NOT NULL DEFAULT ''",
     "recommendation": "TEXT NOT NULL DEFAULT 'UNKNOWN'",
     "blockers": "TEXT NOT NULL DEFAULT '[]'",
     "warnings": "TEXT NOT NULL DEFAULT '[]'",
     "suggestions": "TEXT NOT NULL DEFAULT '[]'",
     "review_history": "TEXT NOT NULL DEFAULT '[]'",
     "review_iterations": "INTEGER NOT NULL DEFAULT 0",
+    "generated_files": "TEXT NOT NULL DEFAULT '[]'",
 }
 
 
@@ -63,6 +69,7 @@ class TaskRepository:
             CREATE TABLE IF NOT EXISTS tasks (
                 id TEXT PRIMARY KEY,
                 repository_id TEXT NOT NULL DEFAULT '',
+                repository_path TEXT NOT NULL DEFAULT '',
                 description TEXT NOT NULL,
                 generated_code TEXT NOT NULL,
                 architecture_review TEXT NOT NULL,
@@ -74,6 +81,7 @@ class TaskRepository:
                 suggestions TEXT NOT NULL DEFAULT '[]',
                 review_history TEXT NOT NULL DEFAULT '[]',
                 review_iterations INTEGER NOT NULL DEFAULT 0,
+                generated_files TEXT NOT NULL DEFAULT '[]',
                 status TEXT NOT NULL,
                 created_at TEXT NOT NULL
             )
@@ -120,6 +128,16 @@ class TaskRepository:
             ]
         )
 
+        generated_files_json = json.dumps(
+            [
+                {
+                    "path": item.file_path,
+                    "file_type": item.file_type.value,
+                }
+                for item in task.generated_files
+            ]
+        )
+
         cursor = self.connection.cursor()
 
         cursor.execute(
@@ -134,6 +152,7 @@ class TaskRepository:
             (
                 task.id,
                 task.repository_id,
+                task.repository_path,
                 task.description,
                 task.generated_code,
                 task.architecture_review,
@@ -145,6 +164,7 @@ class TaskRepository:
                 json.dumps(task.suggestions),
                 review_history_json,
                 task.review_iterations,
+                generated_files_json,
                 task.status.value,
                 task.created_at,
             ),
@@ -200,6 +220,22 @@ class TaskRepository:
             for item in items
         ]
 
+    def _parse_generated_files(
+        self,
+        generated_files_json: str,
+    ) -> list[GeneratedFile]:
+        items = json.loads(generated_files_json or "[]")
+
+        return [
+            GeneratedFile(
+                file_path=item["path"],
+                file_type=FileType(
+                    item.get("file_type", FileType.CODE.value)
+                ),
+            )
+            for item in items
+        ]
+
     def _to_task(
         self,
         row: tuple,
@@ -208,19 +244,21 @@ class TaskRepository:
         return Task(
             id=row[0],
             repository_id=row[1],
-            description=row[2],
-            generated_code=row[3],
-            architecture_review=row[4],
-            architecture_score=row[5],
-            generated_tests=row[6],
-            recommendation=ReviewDecision(row[7]),
-            blockers=self._parse_findings(row[8]),
-            warnings=self._parse_findings(row[9]),
-            suggestions=self._parse_findings(row[10]),
-            review_history=self._parse_review_history(row[11]),
-            review_iterations=row[12],
-            status=TaskStatus(row[13]),
-            created_at=row[14],
+            repository_path=row[2],
+            description=row[3],
+            generated_code=row[4],
+            architecture_review=row[5],
+            architecture_score=row[6],
+            generated_tests=row[7],
+            recommendation=ReviewDecision(row[8]),
+            blockers=self._parse_findings(row[9]),
+            warnings=self._parse_findings(row[10]),
+            suggestions=self._parse_findings(row[11]),
+            review_history=self._parse_review_history(row[12]),
+            review_iterations=row[13],
+            generated_files=self._parse_generated_files(row[14]),
+            status=TaskStatus(row[15]),
+            created_at=row[16],
         )
 
     def get_all(
