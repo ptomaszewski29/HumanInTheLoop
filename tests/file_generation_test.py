@@ -150,6 +150,35 @@ check(
     ["src/good.ts"],
 )
 
+print()
+print("=" * 80)
+print("A TRUNCATED ANSWER KEEPS WHAT IT FINISHED")
+print("=" * 80)
+
+TRUNCATED = (
+    '{"files": ['
+    '{"path": "src/a.ts", "content": "export class A {}"},'
+    '{"path": "src/b.ts", "content": "export class B {}"},'
+    '{"path": "src/c.ts", "content": "export class C'
+)
+
+check(
+    "the complete entries survive",
+    [item.path for item in FileParser.parse(TRUNCATED)],
+    ["src/a.ts", "src/b.ts"],
+)
+
+check(
+    "their content is intact",
+    FileParser.parse(TRUNCATED)[0].content,
+    "export class A {}",
+)
+
+rejects(
+    "a truncation with no complete entry",
+    '{"files": [',
+)
+
 rejects("an answer with no JSON", "I could not do that.")
 
 rejects("an answer with no file list", '{"result":"ok"}')

@@ -17,6 +17,10 @@ SECTION_ALIASES: dict[str, tuple[str, ...]] = {
         "SUGGESTIONS",
         "SUGGESTION",
     ),
+    "structural": (
+        "STRUCTURAL FINDINGS",
+        "STRUCTURAL",
+    ),
 }
 
 ALL_HEADINGS: tuple[str, ...] = (

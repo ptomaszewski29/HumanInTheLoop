@@ -40,6 +40,8 @@ class Task:
 
     suggestions: list[str] = field(default_factory=list)
 
+    structural: list[str] = field(default_factory=list)
+
     review_iterations: int = 0
 
     review_history: list[ReviewHistory] = field(default_factory=list)

@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 
+from models.structure_report import StructureReport
 from workflows.review_decision import (
     ReviewDecision,
 )
@@ -20,3 +21,9 @@ class ArchitectureReview:
     warnings: list[str] = field(default_factory=list)
 
     suggestions: list[str] = field(default_factory=list)
+
+    structural: list[str] = field(default_factory=list)
+
+    structure_report: StructureReport = field(
+        default_factory=StructureReport
+    )

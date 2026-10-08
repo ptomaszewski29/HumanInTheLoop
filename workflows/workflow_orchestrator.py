@@ -67,6 +67,7 @@ class WorkflowOrchestrator:
                     blockers=architecture_review.blockers,
                     warnings=architecture_review.warnings,
                     suggestions=architecture_review.suggestions,
+                    structural=architecture_review.structural,
                 )
             )
 
@@ -102,6 +103,7 @@ class WorkflowOrchestrator:
             blockers=architecture_review.blockers,
             warnings=architecture_review.warnings,
             suggestions=architecture_review.suggestions,
+            structural=architecture_review.structural,
             review_iterations=review_iterations,
             review_history=review_history,
             generated_files=generated_files,

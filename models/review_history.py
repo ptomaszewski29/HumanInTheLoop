@@ -22,3 +22,5 @@ class ReviewHistory:
     warnings: list[str] = field(default_factory=list)
 
     suggestions: list[str] = field(default_factory=list)
+
+    structural: list[str] = field(default_factory=list)

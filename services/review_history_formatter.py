@@ -26,6 +26,7 @@ Score:
 Recommendation:
 {review.recommendation.value}
 
+{ReviewHistoryFormatter._section("STRUCTURAL", review.structural)}
 {ReviewHistoryFormatter._section("BLOCKERS", review.blockers)}
 {ReviewHistoryFormatter._section("WARNINGS", review.warnings)}
 {ReviewHistoryFormatter._section("SUGGESTIONS", review.suggestions)}
@@ -62,6 +63,9 @@ Recommendation:
 
         return (
             ReviewHistoryFormatter._section(
+                "STRUCTURAL", last.structural
+            )
+            + ReviewHistoryFormatter._section(
                 "BLOCKERS", last.blockers
             )
             + ReviewHistoryFormatter._section(

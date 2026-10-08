@@ -24,6 +24,7 @@ COLUMNS = (
     "blockers",
     "warnings",
     "suggestions",
+    "structural",
     "review_history",
     "review_iterations",
     "generated_files",
@@ -44,6 +45,7 @@ ADDED_COLUMNS = {
     "blockers": "TEXT NOT NULL DEFAULT '[]'",
     "warnings": "TEXT NOT NULL DEFAULT '[]'",
     "suggestions": "TEXT NOT NULL DEFAULT '[]'",
+    "structural": "TEXT NOT NULL DEFAULT '[]'",
     "review_history": "TEXT NOT NULL DEFAULT '[]'",
     "review_iterations": "INTEGER NOT NULL DEFAULT 0",
     "generated_files": "TEXT NOT NULL DEFAULT '[]'",
@@ -79,6 +81,7 @@ class TaskRepository:
                 blockers TEXT NOT NULL DEFAULT '[]',
                 warnings TEXT NOT NULL DEFAULT '[]',
                 suggestions TEXT NOT NULL DEFAULT '[]',
+                structural TEXT NOT NULL DEFAULT '[]',
                 review_history TEXT NOT NULL DEFAULT '[]',
                 review_iterations INTEGER NOT NULL DEFAULT 0,
                 generated_files TEXT NOT NULL DEFAULT '[]',
@@ -123,6 +126,7 @@ class TaskRepository:
                     "blockers": item.blockers,
                     "warnings": item.warnings,
                     "suggestions": item.suggestions,
+                    "structural": item.structural,
                 }
                 for item in task.review_history
             ]
@@ -162,6 +166,7 @@ class TaskRepository:
                 json.dumps(task.blockers),
                 json.dumps(task.warnings),
                 json.dumps(task.suggestions),
+                json.dumps(task.structural),
                 review_history_json,
                 task.review_iterations,
                 generated_files_json,
@@ -216,6 +221,7 @@ class TaskRepository:
                 blockers=item.get("blockers", []),
                 warnings=item.get("warnings", []),
                 suggestions=item.get("suggestions", []),
+                structural=item.get("structural", []),
             )
             for item in items
         ]
@@ -254,11 +260,12 @@ class TaskRepository:
             blockers=self._parse_findings(row[9]),
             warnings=self._parse_findings(row[10]),
             suggestions=self._parse_findings(row[11]),
-            review_history=self._parse_review_history(row[12]),
-            review_iterations=row[13],
-            generated_files=self._parse_generated_files(row[14]),
-            status=TaskStatus(row[15]),
-            created_at=row[16],
+            structural=self._parse_findings(row[12]),
+            review_history=self._parse_review_history(row[13]),
+            review_iterations=row[14],
+            generated_files=self._parse_generated_files(row[15]),
+            status=TaskStatus(row[16]),
+            created_at=row[17],
         )
 
     def get_all(

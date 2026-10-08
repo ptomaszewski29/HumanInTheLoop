@@ -360,6 +360,13 @@ if st.session_state.task:
             len(task.suggestions),
         )
 
+    if task.structural:
+
+        st.error(
+            f"🧱 {len(task.structural)} structural "
+            "finding(s) — see Architecture Review."
+        )
+
     if task.architecture_score > 0:
 
         st.progress(task.architecture_score / 100)
@@ -407,6 +414,19 @@ if st.session_state.task:
 
     with tab_review:
 
+        st.subheader("Structural Findings")
+
+        if task.structural:
+
+            for finding in task.structural:
+                st.error(finding)
+
+        else:
+
+            st.success("No structural problems found.")
+
+        st.divider()
+
         if task.architecture_review:
 
             st.markdown(task.architecture_review)
@@ -452,6 +472,13 @@ if st.session_state.task:
                     st.metric(
                         "💡 Suggestions",
                         len(review.suggestions),
+                    )
+
+                if review.structural:
+
+                    st.caption(
+                        f"🧱 {len(review.structural)} "
+                        "structural finding(s)"
                     )
 
                 st.markdown(review.review)

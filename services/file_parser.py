@@ -133,6 +133,93 @@ class FileParser:
             )
 
     @staticmethod
+    def balanced_objects(text: str) -> list[dict]:
+        """Every complete JSON object inside the text.
+
+        A model that runs out of tokens leaves the outer
+        object unclosed, but the file entries it already
+        emitted are intact and worth keeping.
+        """
+
+        found: list[dict] = []
+
+        index = 0
+
+        while index < len(text):
+
+            if text[index] != "{":
+                index += 1
+                continue
+
+            depth = 0
+
+            in_string = False
+
+            escaped = False
+
+            end = None
+
+            for position in range(index, len(text)):
+
+                character = text[position]
+
+                if in_string:
+
+                    if escaped:
+                        escaped = False
+                    elif character == "\\":
+                        escaped = True
+                    elif character == '"':
+                        in_string = False
+
+                    continue
+
+                if character == '"':
+                    in_string = True
+
+                elif character == "{":
+                    depth += 1
+
+                elif character == "}":
+                    depth -= 1
+
+                    if depth == 0:
+                        end = position
+                        break
+
+            if end is None:
+                index += 1
+                continue
+
+            try:
+                value = FileParser.load(
+                    text[index : end + 1]
+                )
+
+            except (ValueError, TypeError):
+                index += 1
+                continue
+
+            if isinstance(value, dict):
+                found.append(value)
+
+            index = end + 1
+
+        return found
+
+    @staticmethod
+    def salvage(raw: str) -> list[dict]:
+        """File entries recoverable from a truncated answer."""
+
+        text = FENCE.sub("", raw.strip()).strip()
+
+        return [
+            value
+            for value in FileParser.balanced_objects(text)
+            if "path" in value and "content" in value
+        ]
+
+    @staticmethod
     def safe_path(path: str) -> str | None:
         """A repository-relative path, or None if unsafe.
 
@@ -171,15 +258,31 @@ class FileParser:
         file_type: FileType = FileType.SOURCE,
     ) -> list[GeneratedFile]:
 
-        payload = FileParser.load(
-            FileParser.extract_json(raw)
-        )
+        try:
+            payload = FileParser.load(
+                FileParser.extract_json(raw)
+            )
 
-        entries = payload.get("files")
+            entries = payload.get("files")
+
+        except (FileParseError, ValueError):
+            entries = None
 
         if not isinstance(entries, list):
+
+            # A truncated answer still carries the entries
+            # the model finished before it ran out.
+            entries = FileParser.salvage(raw)
+
+            if entries:
+                print(
+                    f"recovered {len(entries)} file(s) "
+                    "from an incomplete answer"
+                )
+
+        if not entries:
             raise FileParseError(
-                "The JSON has no 'files' list."
+                "No usable 'files' list in the answer."
             )
 
         files: list[GeneratedFile] = []

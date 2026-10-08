@@ -16,12 +16,47 @@ from services.review_parser import (
     ReviewParser,
     drop_contradictions,
 )
+from services.structure_validator import (
+    StructureValidator,
+)
 from workflows.recommendation_policy import (
     RecommendationPolicy,
 )
 from workflows.review_decision import (
     ReviewDecision,
 )
+
+
+def _as_lines(findings: list[str]) -> str:
+
+    if not findings:
+        return "- None"
+
+    return "\n".join(f"- {finding}" for finding in findings)
+
+
+def _merge(first: list[str], second: list[str]) -> list[str]:
+    """First list wins, duplicates from the second dropped."""
+
+    merged = list(first)
+
+    known = {_key(finding) for finding in first}
+
+    for finding in second:
+
+        if _key(finding) in known:
+            continue
+
+        known.add(_key(finding))
+
+        merged.append(finding)
+
+    return merged
+
+
+def _key(finding: str) -> str:
+
+    return " ".join(finding.lower().split())
 
 
 class ArchitectAgent:
@@ -50,6 +85,16 @@ class ArchitectAgent:
             )
         )
 
+        # Imports, missing files and requirement coverage
+        # are facts about the file set, so they are decided
+        # here rather than left to the model.
+        report = StructureValidator.validate(
+            source_files,
+            task_description,
+        )
+
+        structural_findings = report.blockers
+
         prompt = f"""
 You are a Senior Software Architect.
 
@@ -64,6 +109,16 @@ Project Structure:
 
 {FileBundle.structure(source_files)}
 
+Repository Validation Report:
+
+{report.summary()}
+
+Structural problems already found by a
+compiler-style pass, which you must repeat
+verbatim under STRUCTURAL FINDINGS:
+
+{_as_lines(structural_findings)}
+
 Current Code:
 
 {FileBundle.render(source_files)}
@@ -72,6 +127,20 @@ Review the project structure as well as the
 code. A file set should separate interfaces,
 services and providers, and each file should
 hold one logical component.
+
+Validate:
+
+- file completeness
+- imports
+- dependencies
+- repository structure
+- required generated artifacts
+
+Add any further structural problem you find:
+a file referenced but never generated, a
+symbol imported but never exported, a
+circular dependency, or a requirement from
+the task with no implementation.
 
 Classify every finding by severity.
 
@@ -173,6 +242,9 @@ WARNINGS:
 
 SUGGESTIONS:
 - finding
+
+STRUCTURAL FINDINGS:
+- finding
 """
 
         raw_review = (
@@ -199,6 +271,17 @@ SUGGESTIONS:
             raw_review, "suggestions"
         )
 
+        structural = _merge(
+            structural_findings,
+            ReviewParser.section(
+                raw_review, "structural"
+            ),
+        )
+
+        # A structural problem always blocks, whatever the
+        # model decided to call it.
+        blockers = _merge(structural, blockers)
+
         # A finding cannot be resolved and open at
         # the same time; still being open wins.
         resolved = drop_contradictions(
@@ -220,6 +303,7 @@ SUGGESTIONS:
             blockers,
             warnings,
             suggestions,
+            structural,
         )
 
         print("=" * 80)
@@ -234,6 +318,7 @@ SUGGESTIONS:
             f"blockers={len(blockers)} "
             f"warnings={len(warnings)} "
             f"suggestions={len(suggestions)} "
+            f"structural={len(structural)} "
             f"resolved={len(resolved)} "
             f"stated={stated} "
             f"-> {recommendation.value}"
@@ -250,6 +335,8 @@ SUGGESTIONS:
             blockers=blockers,
             warnings=warnings,
             suggestions=suggestions,
+            structural=structural,
+            structure_report=report,
         )
 
     @staticmethod
@@ -258,10 +345,12 @@ SUGGESTIONS:
         blockers: list[str],
         warnings: list[str],
         suggestions: list[str],
+        structural: list[str],
     ) -> str:
 
         sections = (
             ("Resolved Findings", resolved),
+            ("Structural Findings", structural),
             ("Blockers", blockers),
             ("Warnings", warnings),
             ("Suggestions", suggestions),
