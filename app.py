@@ -3,6 +3,7 @@ import os
 import streamlit as st
 from dotenv import load_dotenv
 
+from agents.git_agent import GitAgent
 from config.settings import Settings
 from database.repository_repository import (
     RepositoryRepository,
@@ -14,6 +15,7 @@ from models.repository import Repository
 from models.task import Task
 from models.task_status import TaskStatus
 from services.file_writer import FileWriter
+from services.git_service import GitError, GitService
 from workflows.workflow_orchestrator import (
     WorkflowOrchestrator,
 )
@@ -29,6 +31,11 @@ if "task" not in st.session_state:
 
 if "repository_id" not in st.session_state:
     st.session_state.repository_id = None
+
+# The outcome of the last git run, kept across the rerun
+# that follows approval so the user actually sees it.
+if "git_message" not in st.session_state:
+    st.session_state.git_message = None
 
 repositories = repository_store.get_all()
 
@@ -580,11 +587,98 @@ if st.session_state.task:
 
     st.divider()
 
+    st.subheader("Git")
+
+    if st.session_state.git_message:
+
+        level, text = st.session_state.git_message
+
+        st.session_state.git_message = None
+
+        if level == "success":
+            st.success(text)
+        else:
+            st.warning(text)
+
+    if task.git_operation.committed:
+
+        st.success(
+            f"Committed to `{task.git_operation.branch_name}`"
+        )
+
+        git_1, git_2 = st.columns(2)
+
+        with git_1:
+
+            st.metric(
+                "Branch",
+                task.git_operation.branch_name,
+            )
+
+        with git_2:
+
+            st.metric(
+                "Commit",
+                task.git_operation.short_hash,
+            )
+
+        st.caption(
+            f"Created: {task.git_operation.created_at[:10]}"
+        )
+
+        with st.expander("Commit message"):
+
+            st.code(
+                task.git_operation.commit_message,
+                language="text",
+            )
+
+    else:
+
+        preview = GitAgent.preview(task)
+
+        st.write(f"**Branch:** `{preview['branch']}`")
+
+        if preview["files"]:
+
+            for path in preview["files"]:
+                st.write(f"+ `{path}`")
+
+        else:
+
+            st.info("No files would be committed.")
+
+        if task.repository_path and not GitService(
+            task.repository_path
+        ).is_repository():
+
+            st.warning(
+                "The repository folder is not a git "
+                "repository, so nothing can be committed: "
+                f"{task.repository_path}"
+            )
+
+        if task.status != TaskStatus.APPROVED:
+
+            st.caption(
+                "Approving the task creates this branch "
+                "and commit. Nothing is pushed."
+            )
+
+        with st.expander("Commit message that would be used"):
+
+            st.code(preview["message"], language="text")
+
+    st.divider()
+
     col1, col2 = st.columns(2)
 
     with col1:
 
-        if st.button("✅ Akceptuj"):
+        if st.button(
+            "✅ Akceptuj",
+            disabled=task.status == TaskStatus.APPROVED,
+        ):
 
             task.status = TaskStatus.APPROVED
 
@@ -592,6 +686,35 @@ if st.session_state.task:
                 task.id,
                 TaskStatus.APPROVED,
             )
+
+            # The git agent only ever runs once the human
+            # has approved, and never pushes.
+            try:
+
+                operation = GitAgent.execute(task)
+
+                repository.update_git_operation(
+                    task.id,
+                    operation,
+                )
+
+                task.git_operation = operation
+
+                st.session_state.git_message = (
+                    "success",
+                    (
+                        "Committed "
+                        f"{operation.short_hash} to "
+                        f"{operation.branch_name}"
+                    ),
+                )
+
+            except GitError as error:
+
+                st.session_state.git_message = (
+                    "warning",
+                    f"Approved, but not committed: {error}",
+                )
 
             st.rerun()
 

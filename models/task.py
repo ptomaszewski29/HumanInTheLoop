@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from models.generated_file import GeneratedFile
+from models.git_operation import GitOperation
 from models.review_history import (
     ReviewHistory,
 )
@@ -47,6 +48,10 @@ class Task:
     review_history: list[ReviewHistory] = field(default_factory=list)
 
     generated_files: list[GeneratedFile] = field(default_factory=list)
+
+    git_operation: GitOperation = field(
+        default_factory=GitOperation
+    )
 
     status: TaskStatus = TaskStatus.NEW
 

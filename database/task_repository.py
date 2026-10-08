@@ -4,6 +4,7 @@ import sqlite3
 from config.settings import Settings
 from models.file_type import FileType
 from models.generated_file import GeneratedFile
+from models.git_operation import GitOperation
 from models.review_history import ReviewHistory
 from models.task import Task
 from models.task_status import TaskStatus
@@ -28,6 +29,7 @@ COLUMNS = (
     "review_history",
     "review_iterations",
     "generated_files",
+    "git_operation",
     "status",
     "created_at",
 )
@@ -49,6 +51,7 @@ ADDED_COLUMNS = {
     "review_history": "TEXT NOT NULL DEFAULT '[]'",
     "review_iterations": "INTEGER NOT NULL DEFAULT 0",
     "generated_files": "TEXT NOT NULL DEFAULT '[]'",
+    "git_operation": "TEXT NOT NULL DEFAULT '{}'",
 }
 
 
@@ -85,6 +88,7 @@ class TaskRepository:
                 review_history TEXT NOT NULL DEFAULT '[]',
                 review_iterations INTEGER NOT NULL DEFAULT 0,
                 generated_files TEXT NOT NULL DEFAULT '[]',
+                git_operation TEXT NOT NULL DEFAULT '{}',
                 status TEXT NOT NULL,
                 created_at TEXT NOT NULL
             )
@@ -142,6 +146,15 @@ class TaskRepository:
             ]
         )
 
+        git_operation_json = json.dumps(
+            {
+                "branch_name": task.git_operation.branch_name,
+                "commit_hash": task.git_operation.commit_hash,
+                "commit_message": task.git_operation.commit_message,
+                "created_at": task.git_operation.created_at,
+            }
+        )
+
         cursor = self.connection.cursor()
 
         cursor.execute(
@@ -170,6 +183,7 @@ class TaskRepository:
                 review_history_json,
                 task.review_iterations,
                 generated_files_json,
+                git_operation_json,
                 task.status.value,
                 task.created_at,
             ),
@@ -192,6 +206,36 @@ class TaskRepository:
             """,
             (
                 status.value,
+                task_id,
+            ),
+        )
+
+        self.connection.commit()
+
+    def update_git_operation(
+        self,
+        task_id: str,
+        operation: GitOperation,
+    ) -> None:
+        """Records the branch and commit a task produced."""
+
+        cursor = self.connection.cursor()
+
+        cursor.execute(
+            """
+            UPDATE tasks
+            SET git_operation = ?
+            WHERE id = ?
+            """,
+            (
+                json.dumps(
+                    {
+                        "branch_name": operation.branch_name,
+                        "commit_hash": operation.commit_hash,
+                        "commit_message": operation.commit_message,
+                        "created_at": operation.created_at,
+                    }
+                ),
                 task_id,
             ),
         )
@@ -242,6 +286,22 @@ class TaskRepository:
             for item in items
         ]
 
+    def _parse_git_operation(
+        self,
+        git_operation_json: str,
+    ) -> GitOperation:
+        data = json.loads(git_operation_json or "{}")
+
+        if not data:
+            return GitOperation()
+
+        return GitOperation(
+            branch_name=data.get("branch_name", ""),
+            commit_hash=data.get("commit_hash", ""),
+            commit_message=data.get("commit_message", ""),
+            created_at=data.get("created_at", ""),
+        )
+
     def _to_task(
         self,
         row: tuple,
@@ -264,8 +324,9 @@ class TaskRepository:
             review_history=self._parse_review_history(row[13]),
             review_iterations=row[14],
             generated_files=self._parse_generated_files(row[15]),
-            status=TaskStatus(row[16]),
-            created_at=row[17],
+            git_operation=self._parse_git_operation(row[16]),
+            status=TaskStatus(row[17]),
+            created_at=row[18],
         )
 
     def get_all(
