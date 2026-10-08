@@ -6,6 +6,7 @@ from models.generated_file import GeneratedFile
 from models.git_diff import GitDiff
 from models.git_operation import GitOperation
 from models.git_push_operation import GitPushOperation
+from models.github_issue import IssueLink
 from models.pull_request_info import PullRequestInfo
 from models.review_history import (
     ReviewHistory,
@@ -22,6 +23,9 @@ class Task:
     id: str = field(default_factory=lambda: str(uuid4()))
 
     repository_id: str = ""
+
+    # The backlog item this task serves, if any.
+    issue: IssueLink = field(default_factory=IssueLink)
 
     # Kept alongside the id so a task can still find its
     # files after the repository row is deleted.

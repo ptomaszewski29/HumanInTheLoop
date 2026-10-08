@@ -108,8 +108,8 @@ The gate can be switched off entirely: `ENABLE_TEST_EXECUTION = False`.
 
 ## GitHub
 
-`services/github_service.py` matches on method **and** path. Four calls
-exist:
+`services/github_service.py` matches on method **and** path. These calls
+exist, and no others:
 
 | Call | Purpose |
 |---|---|
@@ -117,17 +117,27 @@ exist:
 | `GET /repos/{owner}/{repo}/pulls` | find an existing one for a branch |
 | `GET /repos/{owner}/{repo}/pulls/{n}` | read one back |
 | `GET /repos/{owner}/{repo}` | read the default branch |
+| `GET /repos/{owner}/{repo}/issues` | list open issues |
+| `GET /repos/{owner}/{repo}/issues/{n}` | read one issue |
+| `POST /repos/{owner}/{repo}/issues/{n}/comments` | report progress |
+| `PATCH /repos/{owner}/{repo}/issues/{n}` | labels and state only |
 
-Everything else is refused before a request is built. Merging, closing,
-deleting, commenting and reviewing are not "unimplemented" — they are
-**unreachable**:
+That last one needs a second limit, because a `PATCH` on an issue could
+rewrite its title and body. Only `labels` and `state` may be sent; a
+payload carrying anything else, or nothing at all, is refused before the
+request is built.
+
+Everything else is refused before a request is built. Merging a pull
+request, reviewing one, and deleting anything are not "unimplemented" —
+they are **unreachable**:
 
 ```text
 PUT    /repos/o/r/pulls/1/merge        refused
 PATCH  /repos/o/r/pulls/1              refused
 DELETE /repos/o/r/git/refs/heads/x     refused
-POST   /repos/o/r/issues/1/comments    refused
 POST   /repos/o/r/pulls/1/reviews      refused
+DELETE /repos/o/r/issues/1             refused
+PATCH  /repos/o/r/issues/1 {title:…}   refused
 GET    /user                           refused
 ```
 

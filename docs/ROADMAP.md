@@ -50,6 +50,8 @@ What has been built, in the order it was built, and what the next step is.
 | Sprint | What it added |
 |---|---|
 | 9 | **Planner agent** — an epic becomes ordered tasks with dependencies and priorities, feeding the existing pipeline unchanged |
+| 9.1 | **Requirements workspace** — one place where work is described, and the planner's only input |
+| 10 | **GitHub issues** — a backlog becomes requirements, and a pull request reports back to the issue it came from |
 
 ---
 
@@ -75,6 +77,10 @@ and the split enforced by filtering.
 task branched off the first. Found three sprints later, in a real
 repository, by looking at the commit graph.
 
+**10** — a message pushed into session state is invisible unless something
+on screen renders it. The second time this bit: a failure reported from the
+sidebar went nowhere, because the only renderer sat inside a task's details.
+
 **8.5** — on Windows, vitest reports failures with characters the default
 codepage cannot decode, so the captured output came back empty for exactly
 the runs that matter. Found by running a real failing suite, not by reading
@@ -90,9 +96,9 @@ came from a real run against a real model.
 ### Sprint 10 and beyond, unbuilt
 
 ```text
-Backlog integration     GitHub Issues, Azure Boards
-Multi-repository plans   one epic spanning several repositories
-Review feedback          the human's comments feeding the next round
+Azure Boards            a second backlog, normalising into Requirement
+Multi-repository plans  one requirement spanning several repositories
+Review feedback         the human's comments feeding the next round
 ```
 
 ### Known gaps

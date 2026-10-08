@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from models.github_issue import IssueLink
 from models.task_breakdown import TaskBreakdown
 
 
@@ -12,6 +13,10 @@ class Plan:
     id: str = field(default_factory=lambda: str(uuid4()))
 
     repository_id: str = ""
+
+    requirement_id: str = ""
+
+    issue: IssueLink = field(default_factory=IssueLink)
 
     epic: str = ""
 
@@ -45,6 +50,11 @@ class Plan:
     def is_done(self, task_id: int) -> bool:
 
         return task_id in self.completed
+
+    @property
+    def started(self) -> bool:
+
+        return bool(self.completed)
 
     @property
     def remaining(self) -> list[TaskBreakdown]:

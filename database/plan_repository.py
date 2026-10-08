@@ -2,12 +2,15 @@ import json
 import sqlite3
 
 from config.settings import Settings
+from models.github_issue import IssueLink
 from models.plan import Plan
 from models.task_breakdown import Priority, TaskBreakdown
 
 COLUMNS = (
     "id",
     "repository_id",
+    "requirement_id",
+    "issue",
     "epic",
     "tasks",
     "completed",
@@ -23,6 +26,8 @@ PLACEHOLDERS = ", ".join("?" for _ in COLUMNS)
 # definition used to retrofit an existing database.
 ADDED_COLUMNS = {
     "issues": "TEXT NOT NULL DEFAULT '[]'",
+    "requirement_id": "TEXT NOT NULL DEFAULT ''",
+    "issue": "TEXT NOT NULL DEFAULT '{}'",
 }
 
 
@@ -45,6 +50,8 @@ class PlanRepository:
             CREATE TABLE IF NOT EXISTS plans (
                 id TEXT PRIMARY KEY,
                 repository_id TEXT NOT NULL DEFAULT '',
+                requirement_id TEXT NOT NULL DEFAULT '',
+                issue TEXT NOT NULL DEFAULT '{}',
                 epic TEXT NOT NULL,
                 tasks TEXT NOT NULL DEFAULT '[]',
                 completed TEXT NOT NULL DEFAULT '[]',
@@ -111,6 +118,16 @@ class PlanRepository:
             (
                 plan.id,
                 plan.repository_id,
+                plan.requirement_id,
+                json.dumps(
+                    {
+                        "id": plan.issue.id,
+                        "number": plan.issue.number,
+                        "title": plan.issue.title,
+                        "state": plan.issue.state,
+                        "url": plan.issue.url,
+                    }
+                ),
                 plan.epic,
                 self._tasks_json(plan),
                 json.dumps(plan.completed),
@@ -178,16 +195,29 @@ class PlanRepository:
             for item in json.loads(tasks_json or "[]")
         ]
 
+    def _parse_issue(self, issue_json: str) -> IssueLink:
+        data = json.loads(issue_json or "{}")
+
+        return IssueLink(
+            id=int(data.get("id") or 0),
+            number=int(data.get("number") or 0),
+            title=data.get("title", ""),
+            state=data.get("state", ""),
+            url=data.get("url", ""),
+        )
+
     def _to_plan(self, row: tuple) -> Plan:
 
         return Plan(
             id=row[0],
             repository_id=row[1],
-            epic=row[2],
-            tasks=self._parse_tasks(row[3]),
-            completed=json.loads(row[4] or "[]"),
-            issues=json.loads(row[5] or "[]"),
-            created_at=row[6],
+            requirement_id=row[2],
+            issue=self._parse_issue(row[3]),
+            epic=row[4],
+            tasks=self._parse_tasks(row[5]),
+            completed=json.loads(row[6] or "[]"),
+            issues=json.loads(row[7] or "[]"),
+            created_at=row[8],
         )
 
     def get_all(self) -> list[Plan]:

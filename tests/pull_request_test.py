@@ -173,14 +173,27 @@ for method, path in (
     ("PUT", "/repos/o/r/pulls/1/merge"),
     ("PATCH", "/repos/o/r/pulls/1"),
     ("DELETE", "/repos/o/r/git/refs/heads/x"),
-    ("POST", "/repos/o/r/issues/1/comments"),
     ("POST", "/repos/o/r/pulls/1/reviews"),
     ("DELETE", "/repos/o/r"),
     ("GET", "/user"),
+    ("DELETE", "/repos/o/r/issues/1"),
+    ("POST", "/repos/o/r/issues"),
 ):
     refuses(
         f"{method} {path}",
         lambda m=method, p=path: service._request(m, p),
+    )
+
+# Commenting on an issue became allowed when the backlog
+# sprint landed; rewriting one never did.
+for payload in ({"title": "x"}, {"body": "x"}, {}):
+    refuses(
+        f"PATCH an issue with {sorted(payload)}",
+        lambda p=payload: service._request(
+            "PATCH",
+            "/repos/o/r/issues/1",
+            p,
+        ),
     )
 
 CALLS.clear()

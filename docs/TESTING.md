@@ -22,6 +22,14 @@ kept rather than dropped. A task may not depend on itself or on a task that
 does not exist. A truncated plan keeps what the model finished; an
 unusable answer fails loudly. Plans survive a restart.
 
+### `tests.issue_test`
+
+Issues are read without pull requests mixed in, commented on and relabelled.
+An issue's title and body stay out of reach: a `PATCH` carrying anything but
+`labels` or `state` is refused. Closing is possible but never happens while
+reporting. An issue becomes a requirement, and re-importing updates rather
+than duplicates. Lifecycles are derived, so they cannot drift.
+
 ### `tests.severity_test`
 
 The Architect's answer is parsed from messy real-world shapes: markdown

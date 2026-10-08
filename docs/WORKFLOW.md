@@ -1,8 +1,8 @@
 # Workflow
 
 ```text
-Epic
-  ↓
+Requirement                   typed by hand, or imported
+  ↓                           from a GitHub issue
 Planner Agent                 breaks it into ordered tasks
   ↓
 Task
@@ -28,7 +28,36 @@ Local Commit                  on a branch cut from the base
 Remote Push                   a separate click
   ↓
 Pull Request                  another separate click
+  ↓
+Issue Comment                 if the work came from an issue
 ```
+
+---
+
+## Where work comes from
+
+Everything enters as a **Requirement**: a title and a description, written
+in the workspace or imported from a GitHub issue. The planner reads a
+Requirement and nothing else, so a new backlog source only has to produce
+one rather than grow its own path into the pipeline.
+
+Importing the same issue twice updates the requirement it produced instead
+of making a second one.
+
+A requirement's status is derived from the plans it produced, never stored:
+
+| Status | Meaning |
+|---|---|
+| `DRAFT` | written, not planned |
+| `PLANNED` | a plan exists, nothing has run |
+| `EXECUTING` | some tasks have run, some remain |
+| `COMPLETED` | every planned task has run |
+
+Once a pull request exists, the issue a task came from gets a comment with
+the architecture score, the recommendation, the test result and the pull
+request URL, and its labels are updated. **The issue is never closed
+automatically** — deciding the work is done is a judgement, so it stays a
+button a human presses.
 
 ---
 

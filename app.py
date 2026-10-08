@@ -4,6 +4,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from agents.git_agent import GitAgent
+from agents.issue_agent import IssueAgent
 from agents.planner_agent import PlannerAgent
 from agents.pull_request_agent import PullRequestAgent
 from config.settings import Settings
@@ -12,11 +13,15 @@ from database.repository_repository import (
     RepositoryRepository,
     same_path,
 )
+from database.requirement_repository import (
+    RequirementRepository,
+)
 from database.task_repository import TaskRepository
 from models.file_type import FileType
 from models.git_push_operation import PushStatus
 from models.pull_request_info import PullRequestState
 from models.repository import Repository
+from models.requirement import Requirement, now
 from models.task import Task
 from models.task_status import TaskStatus
 from models.test_result import TestStatus
@@ -33,6 +38,7 @@ orchestrator = WorkflowOrchestrator()
 repository = TaskRepository()
 repository_store = RepositoryRepository()
 plan_store = PlanRepository()
+requirement_store = RequirementRepository()
 
 if "task" not in st.session_state:
     st.session_state.task = None
@@ -47,6 +53,12 @@ if "git_message" not in st.session_state:
 
 if "plan" not in st.session_state:
     st.session_state.plan = None
+
+if "requirement" not in st.session_state:
+    st.session_state.requirement = None
+
+if "issues" not in st.session_state:
+    st.session_state.issues = None
 
 repositories = repository_store.get_all()
 
@@ -109,7 +121,12 @@ def show_files(root: str, files, empty_message: str) -> None:
                 st.code(content, language="typescript")
 
 
-def run_task(description: str, repository_id: str, path: str):
+def run_task(
+    description: str,
+    repository_id: str,
+    path: str,
+    issue=None,
+):
     """One task through the whole pipeline, saved."""
 
     generated = orchestrator.execute(
@@ -117,6 +134,9 @@ def run_task(description: str, repository_id: str, path: str):
         repository_id,
         path,
     )
+
+    if issue is not None and issue.exists:
+        generated.issue = issue
 
     repository.save(generated)
 
@@ -139,6 +159,21 @@ def repository_label(task_like) -> str:
     return "None"
 
 st.title(Settings.PAGE_TITLE)
+
+# The outcome of the last action, kept across the rerun
+# that follows it. Rendered here rather than beside the
+# button, because the section that held it is not always
+# on screen.
+if st.session_state.git_message:
+
+    level, text = st.session_state.git_message
+
+    st.session_state.git_message = None
+
+    if level == "success":
+        st.success(text)
+    else:
+        st.warning(text)
 
 with st.sidebar:
 
@@ -237,6 +272,112 @@ with st.sidebar:
 
     st.divider()
 
+    st.header("🧠 Requirements")
+
+    requirements = requirement_store.get_all()
+
+    if not requirements:
+        st.write("No requirements yet.")
+
+    for item in requirements:
+
+        if st.button(
+            item.label[:34],
+            key=f"req-{item.id}",
+            use_container_width=True,
+        ):
+            st.session_state.requirement = (
+                requirement_store.get_by_id(item.id)
+            )
+
+            st.session_state.plan = None
+
+            st.rerun()
+
+    if st.button(
+        "➕ New requirement",
+        use_container_width=True,
+    ):
+        st.session_state.requirement = Requirement(
+            repository_id=st.session_state.repository_id
+            or "",
+        )
+
+        st.session_state.plan = None
+
+        st.rerun()
+
+    st.divider()
+
+    st.header("📥 GitHub Issues")
+
+    active = (
+        repositories_by_id.get(
+            st.session_state.repository_id
+        )
+        if st.session_state.repository_id
+        else None
+    )
+
+    remote_url = ""
+
+    if active and GitService(active.path).is_repository():
+
+        try:
+            remote_url = GitService(active.path).remote_url()
+
+        except GitError:
+            remote_url = ""
+
+    if st.button(
+        "🔄 Load open issues",
+        use_container_width=True,
+        disabled=not remote_url,
+    ):
+        found, problem = IssueAgent.open_issues(remote_url)
+
+        st.session_state.issues = found
+
+        if problem:
+            st.session_state.git_message = (
+                "warning",
+                f"Could not read issues: {problem}",
+            )
+
+        st.rerun()
+
+    if not remote_url:
+        st.caption(
+            "Select a git repository with a GitHub remote."
+        )
+
+    for issue in st.session_state.issues or []:
+
+        if st.button(
+            issue.label[:34],
+            key=f"issue-{issue.number}",
+            use_container_width=True,
+        ):
+            existing = requirement_store.get_by_issue(
+                issue.number
+            )
+
+            imported = IssueAgent.to_requirement(
+                issue,
+                st.session_state.repository_id or "",
+                existing,
+            )
+
+            requirement_store.save(imported)
+
+            st.session_state.requirement = imported
+
+            st.session_state.plan = None
+
+            st.rerun()
+
+    st.divider()
+
     st.header("📋 Plans")
 
     plans = plan_store.get_all()
@@ -306,38 +447,130 @@ else:
         "Add and select a repository before creating a task."
     )
 
-st.subheader("📋 Planner")
+if st.session_state.requirement:
 
-epic = st.text_area(
-    "Opisz epik, a planner rozbije go na zadania",
-    key="epic_input",
-)
+    requirement = st.session_state.requirement
 
-if st.button(
-    "Zaplanuj",
-    disabled=not st.session_state.repository_id,
-) and epic:
+    st.subheader("🧠 Requirement")
 
-    with st.spinner("🧠 Planner ..."):
+    if requirement.issue.exists:
 
-        try:
+        st.caption(
+            f"Imported from issue {requirement.issue.label}"
+        )
 
-            plan = PlannerAgent().execute(
-                epic,
-                st.session_state.repository_id,
-            )
+    plans_for = [
+        item
+        for item in plan_store.get_all()
+        if item.requirement_id == requirement.id
+    ]
 
-        except Exception as error:
+    st.caption(
+        "Status: "
+        + requirement.lifecycle(
+            plans=len(plans_for),
+            started=sum(
+                1 for item in plans_for if item.started
+            ),
+            outstanding=sum(
+                len(item.remaining) for item in plans_for
+            ),
+        ).value
+        + f" · updated {requirement.updated_at[:19]}"
+    )
 
-            st.error(f"Planner failed: {error}")
+    new_title = st.text_input(
+        "Title",
+        value=requirement.title,
+        key=f"title-{requirement.id}",
+    )
 
-            st.stop()
+    new_content = st.text_area(
+        "Requirements description",
+        value=requirement.content,
+        height=220,
+        key=f"content-{requirement.id}",
+        help=(
+            "User stories, functional and non-functional "
+            "requirements, architecture constraints, "
+            "acceptance criteria."
+        ),
+    )
 
-        plan_store.save(plan)
+    save_col, plan_col, delete_col = st.columns(3)
 
-        st.session_state.plan = plan
+    with save_col:
 
-        st.rerun()
+        if st.button("💾 Save", use_container_width=True):
+
+            requirement.title = new_title
+
+            requirement.content = new_content
+
+            requirement.updated_at = now()
+
+            requirement_store.save(requirement)
+
+            st.session_state.requirement = requirement
+
+            st.rerun()
+
+    with plan_col:
+
+        if st.button(
+            "🧠 Generate plan",
+            use_container_width=True,
+            disabled=not st.session_state.repository_id
+            or not new_content.strip(),
+        ):
+
+            requirement.title = new_title
+
+            requirement.content = new_content
+
+            requirement.updated_at = now()
+
+            requirement_store.save(requirement)
+
+            with st.spinner("🧠 Planner ..."):
+
+                try:
+
+                    plan = PlannerAgent().execute(
+                        requirement.epic,
+                        st.session_state.repository_id,
+                    )
+
+                except Exception as error:
+
+                    st.error(f"Planner failed: {error}")
+
+                    st.stop()
+
+                plan.requirement_id = requirement.id
+
+                plan.issue = requirement.issue
+
+                plan_store.save(plan)
+
+                st.session_state.plan = plan
+
+                st.rerun()
+
+    with delete_col:
+
+        if st.button(
+            "🗑 Delete",
+            use_container_width=True,
+        ):
+
+            requirement_store.delete(requirement.id)
+
+            st.session_state.requirement = None
+
+            st.rerun()
+
+    st.divider()
 
 if st.session_state.plan:
 
@@ -457,6 +690,7 @@ if st.session_state.plan:
                             item.prompt,
                             plan.repository_id,
                             target_path,
+                            plan.issue,
                         )
 
                     except Exception as error:
@@ -519,6 +753,7 @@ if st.session_state.plan:
                             item.prompt,
                             plan.repository_id,
                             target_path,
+                            plan.issue,
                         )
 
                     except Exception as error:
@@ -604,6 +839,15 @@ if st.session_state.task:
     st.write(f"**Status:** {task.status.value}")
 
     st.write(f"**Repository:** {repository_label(task)}")
+
+    if task.issue.exists:
+
+        st.write(
+            f"**Issue:** [{task.issue.label}]"
+            f"({task.issue.url})"
+            if task.issue.url
+            else f"**Issue:** {task.issue.label}"
+        )
 
     task_repository = resolve_repository(task)
 
@@ -1069,17 +1313,6 @@ if st.session_state.task:
 
     st.subheader("Git")
 
-    if st.session_state.git_message:
-
-        level, text = st.session_state.git_message
-
-        st.session_state.git_message = None
-
-        if level == "success":
-            st.success(text)
-        else:
-            st.warning(text)
-
     if task.git_operation.committed:
 
         st.success(
@@ -1241,7 +1474,7 @@ if st.session_state.task:
 
                     task.pull_request = info
 
-                    st.session_state.git_message = (
+                    message = (
                         (
                             "success",
                             f"Opened {info.label}: {info.url}",
@@ -1255,6 +1488,38 @@ if st.session_state.task:
                             ),
                         )
                     )
+
+                    # Tell the backlog what happened. A
+                    # failure here never undoes the pull
+                    # request it is reporting.
+                    if info.exists and task.issue.exists:
+
+                        reported, detail = IssueAgent.report(
+                            task,
+                            task.git_push.remote_url,
+                        )
+
+                        message = (
+                            (
+                                "success",
+                                (
+                                    f"Opened {info.label} "
+                                    "and commented on "
+                                    f"{task.issue.label}"
+                                ),
+                            )
+                            if reported
+                            else (
+                                "warning",
+                                (
+                                    f"Opened {info.label}, "
+                                    "but the issue was not "
+                                    f"updated: {detail}"
+                                ),
+                            )
+                        )
+
+                    st.session_state.git_message = message
 
                     st.rerun()
 

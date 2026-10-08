@@ -22,6 +22,35 @@ ALLOWED_CALLS = (
     ),
     # Read the repository, to learn its default branch.
     ("GET", re.compile(r"^/repos/[^/]+/[^/]+$")),
+    # Read issues.
+    ("GET", re.compile(r"^/repos/[^/]+/[^/]+/issues$")),
+    (
+        "GET",
+        re.compile(r"^/repos/[^/]+/[^/]+/issues/\d+$"),
+    ),
+    # Comment on an issue.
+    (
+        "POST",
+        re.compile(
+            r"^/repos/[^/]+/[^/]+/issues/\d+/comments$"
+        ),
+    ),
+    # Change an issue's labels or state, and nothing else:
+    # the fields are restricted below.
+    (
+        "PATCH",
+        re.compile(r"^/repos/[^/]+/[^/]+/issues/\d+$"),
+    ),
+)
+
+# A PATCH on an issue could rewrite its title and body.
+# Only these fields may be sent.
+PATCH_FIELDS = {
+    "issue": frozenset({"labels", "state"}),
+}
+
+ISSUE_PATH = re.compile(
+    r"^/repos/[^/]+/[^/]+/issues/\d+$"
 )
 
 # github.com/owner/repo(.git) in either https or ssh form.
@@ -87,9 +116,11 @@ def parse_remote(url: str) -> tuple[str, str]:
 class GitHubService:
     """A deliberately small GitHub client.
 
-    It can create a pull request and read one back. It
-    cannot merge, close, delete or comment, because those
-    calls are not on the allow list above.
+    It can create and read pull requests, read issues,
+    comment on them, and change their labels or state. It
+    cannot merge a pull request, delete anything, or
+    rewrite an issue's title or body: those calls are not
+    on the allow list above.
     """
 
     def __init__(
@@ -140,6 +171,19 @@ class GitHubService:
                 f"'{method} {path}' is not an allowed "
                 "GitHub operation."
             )
+
+        if method == "PATCH" and ISSUE_PATH.match(path):
+
+            allowed = PATCH_FIELDS["issue"]
+
+            sent = set((payload or {}).keys())
+
+            if not sent or not sent <= allowed:
+                raise GitHubError(
+                    "An issue may only have its "
+                    f"{sorted(allowed)} changed; "
+                    f"got {sorted(sent)}."
+                )
 
         if not self.token:
             raise GitHubError(

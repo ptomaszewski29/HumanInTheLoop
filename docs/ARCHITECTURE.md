@@ -23,12 +23,25 @@ In practice:
 | Is there a dependency cycle? | Is the naming clear? |
 | Does a blocker exist, so what is the recommendation? | What counts as a blocker? |
 | In what order do planned tasks run? | How should the epic be split? |
+| Which issue does this task serve? | What does the issue actually ask for? |
 | Do the generated tests pass? | What should the tests assert? |
 | Which file does a path belong to? | What should the file contain? |
 
 ---
 
 ## Agents
+
+### IssueAgent — `agents/issue_agent.py`
+
+Brings work in from a GitHub backlog and reports back to it. It reads open
+issues, turns one into a Requirement, and comments once a pull request
+exists.
+
+It never closes an issue. The service can, and there is a button for it,
+but nothing in the pipeline calls it: deciding that work is finished is a
+human's judgement.
+
+Owns: the link between a backlog and this platform.
 
 ### PlannerAgent — `agents/planner_agent.py`
 
@@ -173,7 +186,8 @@ its own test.
 | `test_runner` | runs vitest, reads its summary, under a timeout |
 | `git_service` | local and remote git, behind an allow list |
 | `git_diff_service` | what the generated files would change |
-| `github_service` | four GitHub calls, behind an allow list |
+| `github_service` | the GitHub calls, behind an allow list |
+| `github_issue_service` | issues: read, comment, label, close |
 | `review_history_formatter` | previous rounds, for the Architect |
 | `code_cleaner` | strips fences and reasoning blocks |
 | `llm_factory` | picks Ollama or Gemini |
@@ -188,8 +202,12 @@ its own test.
 review, the findings, the diffs, the commit, the push, the pull request and
 the status.
 
-**`Plan`** — an epic, the tasks the planner carved out of it, and which of
-them have already run.
+**`Requirement`** — what someone wants built, before it becomes tasks. The
+single entry point: typed by hand, or imported from an issue. The planner
+reads this and nothing else.
+
+**`Plan`** — a requirement, the tasks the planner carved out of it, and
+which of them have already run.
 
 Both persist to SQLite (`database/`). Columns are added by a migration that
 runs on startup, so an older database keeps working.
@@ -199,7 +217,7 @@ runs on startup, so an older database keeps working.
 ## Where the human sits
 
 ```text
-Planner → Developer → Architect ⇄ Validator → QA → Files
+Requirement → Requirement → Planner → Developer → Architect ⇄ Validator → QA → Files
                           ↑                          ↓
                           └──── failing tests ── Test Gate
                                                      ↓

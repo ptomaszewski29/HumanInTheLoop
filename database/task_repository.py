@@ -10,6 +10,7 @@ from models.git_push_operation import (
     GitPushOperation,
     PushStatus,
 )
+from models.github_issue import IssueLink
 from models.pull_request_info import (
     PullRequestInfo,
     PullRequestState,
@@ -26,6 +27,7 @@ COLUMNS = (
     "id",
     "repository_id",
     "repository_path",
+    "issue",
     "description",
     "generated_code",
     "architecture_review",
@@ -57,6 +59,7 @@ PLACEHOLDERS = ", ".join("?" for _ in COLUMNS)
 ADDED_COLUMNS = {
     "repository_id": "TEXT NOT NULL DEFAULT ''",
     "repository_path": "TEXT NOT NULL DEFAULT ''",
+    "issue": "TEXT NOT NULL DEFAULT '{}'",
     "recommendation": "TEXT NOT NULL DEFAULT 'UNKNOWN'",
     "blockers": "TEXT NOT NULL DEFAULT '[]'",
     "warnings": "TEXT NOT NULL DEFAULT '[]'",
@@ -93,6 +96,7 @@ class TaskRepository:
                 id TEXT PRIMARY KEY,
                 repository_id TEXT NOT NULL DEFAULT '',
                 repository_path TEXT NOT NULL DEFAULT '',
+                issue TEXT NOT NULL DEFAULT '{}',
                 description TEXT NOT NULL,
                 generated_code TEXT NOT NULL,
                 architecture_review TEXT NOT NULL,
@@ -236,6 +240,15 @@ class TaskRepository:
                 task.id,
                 task.repository_id,
                 task.repository_path,
+                json.dumps(
+                    {
+                        "id": task.issue.id,
+                        "number": task.issue.number,
+                        "title": task.issue.title,
+                        "state": task.issue.state,
+                        "url": task.issue.url,
+                    }
+                ),
                 task.description,
                 task.generated_code,
                 task.architecture_review,
@@ -478,6 +491,17 @@ class TaskRepository:
             error=data.get("error", ""),
         )
 
+    def _parse_issue(self, issue_json: str) -> IssueLink:
+        data = json.loads(issue_json or "{}")
+
+        return IssueLink(
+            id=int(data.get("id") or 0),
+            number=int(data.get("number") or 0),
+            title=data.get("title", ""),
+            state=data.get("state", ""),
+            url=data.get("url", ""),
+        )
+
     def _parse_test_result(
         self,
         test_result_json: str,
@@ -531,26 +555,27 @@ class TaskRepository:
             id=row[0],
             repository_id=row[1],
             repository_path=row[2],
-            description=row[3],
-            generated_code=row[4],
-            architecture_review=row[5],
-            architecture_score=row[6],
-            generated_tests=row[7],
-            recommendation=ReviewDecision(row[8]),
-            blockers=self._parse_findings(row[9]),
-            warnings=self._parse_findings(row[10]),
-            suggestions=self._parse_findings(row[11]),
-            structural=self._parse_findings(row[12]),
-            review_history=self._parse_review_history(row[13]),
-            review_iterations=row[14],
-            generated_files=self._parse_generated_files(row[15]),
-            git_operation=self._parse_git_operation(row[16]),
-            git_push=self._parse_git_push(row[17]),
-            pull_request=self._parse_pull_request(row[18]),
-            test_result=self._parse_test_result(row[19]),
-            diffs=self._parse_diffs(row[20]),
-            status=TaskStatus(row[21]),
-            created_at=row[22],
+            issue=self._parse_issue(row[3]),
+            description=row[4],
+            generated_code=row[5],
+            architecture_review=row[6],
+            architecture_score=row[7],
+            generated_tests=row[8],
+            recommendation=ReviewDecision(row[9]),
+            blockers=self._parse_findings(row[10]),
+            warnings=self._parse_findings(row[11]),
+            suggestions=self._parse_findings(row[12]),
+            structural=self._parse_findings(row[13]),
+            review_history=self._parse_review_history(row[14]),
+            review_iterations=row[15],
+            generated_files=self._parse_generated_files(row[16]),
+            git_operation=self._parse_git_operation(row[17]),
+            git_push=self._parse_git_push(row[18]),
+            pull_request=self._parse_pull_request(row[19]),
+            test_result=self._parse_test_result(row[20]),
+            diffs=self._parse_diffs(row[21]),
+            status=TaskStatus(row[22]),
+            created_at=row[23],
         )
 
     def get_all(

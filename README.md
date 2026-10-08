@@ -12,7 +12,9 @@ commit, push and open a pull request.
 ```text
 Repository
   ↓
-Epic  →  Planner  →  Task breakdown     (optional)
+Requirement  →  Planner  →  Task breakdown     (optional)
+  ↑
+  └─ typed by hand, or imported from a GitHub issue
   ↓
 Task
   ↓
@@ -37,6 +39,8 @@ Local Commit
 Remote Push          ← a separate, deliberate click
   ↓
 Pull Request
+  ↓
+Issue Comment        ← if the work came from a GitHub issue
 ```
 
 ---
@@ -112,17 +116,29 @@ Point this at a sandbox, not at a project you care about: **generation
 overwrites files whose paths collide**, and you will see that afterwards in
 the Diff Review tab as `modified`.
 
-### 2. Optionally, plan an epic
+### 2. Write a requirement, or import one
 
-**📋 Planner** turns an epic into between 2 and 12 tasks, each with a
-priority and a dependency list. The ordering is computed in code, so a task
-whose dependencies have not run is shown as blocked and cannot be started.
+**🧠 Requirements** is where work is described: a title and a description
+holding user stories, constraints and acceptance criteria. Everything
+enters here, so the planner has one input rather than one per source.
+
+**📥 GitHub Issues** lists the open issues of the selected repository's
+remote and turns one into a requirement with a click. Re-importing the same
+issue updates it rather than making a second one. This needs `GITHUB_PAT`.
+
+### 3. Optionally, plan it
+
+**🧠 Generate plan** turns a requirement into between 2 and 12 tasks, each
+with a priority and a dependency list. The ordering is computed in code, so
+a task whose dependencies have not run is shown as blocked and cannot be
+started. Problems the planner found in its own breakdown — a self
+dependency, an unknown id, a cycle — are reported above the plan.
 
 Run them one at a time, or **⏩ Uruchom cały plan** to walk the whole plan in
 dependency order. Progress is saved, so you can close a plan and come back
 to it.
 
-### 3. Describe a task
+### 4. Describe a task
 
 Write what you want and press **Generuj kod**. On a local 8B model a run
 takes roughly 5–12 minutes, depending on how many review rounds the
@@ -132,7 +148,7 @@ The loop runs at most `MAX_REVIEW_LOOPS` times. Every round the Architect
 can send the files back to the Developer; it stops as soon as no blocker
 and no structural problem remains.
 
-### 4. Read what was produced
+### 5. Read what was produced
 
 Seven tabs:
 
@@ -151,7 +167,7 @@ what cannot be checked mechanically; everything a compiler-style pass can
 decide belongs to the validator, and the Architect's claims about those
 things are filtered out.
 
-### 5. Approve
+### 6. Approve
 
 **✅ Akceptuj** marks the task approved and, when the folder is a git
 repository, creates `feature/task-<id>` and commits the generated files to
@@ -161,7 +177,7 @@ Approval never fails because of git: if the folder is not a repository or
 the commit cannot be made, the task is still approved and you are told why
 nothing was committed.
 
-### 6. Push and open a pull request
+### 7. Push and open a pull request
 
 **⬆️ Push branch** sends the branch to `origin`. **🔀 Create pull request**
 opens a PR against the repository's default branch, with a description
@@ -169,6 +185,10 @@ built from the run itself: the task, the score, the findings and the file
 list.
 
 Both are separate, deliberate clicks. Neither is a side effect of approval.
+
+When the task came from a GitHub issue, opening the pull request also
+comments on that issue with the score, the recommendation, the test result
+and the pull request URL. The issue is never closed automatically.
 
 ---
 
@@ -210,9 +230,9 @@ GITHUB_PAT=your_token
 
 Neither is needed to generate, review and commit code on a local Ollama.
 
-The GitHub token needs `repo` (classic) or `Pull requests: write`
-(fine-grained). Without it the pull request button is disabled and says so;
-nothing breaks.
+The GitHub token needs `repo` (classic), or `Pull requests: write` **and**
+`Issues: write` (fine-grained). Without it the issue and pull request
+buttons are disabled and say so; nothing breaks.
 
 `.env` and the SQLite database are both in `.gitignore`.
 
@@ -236,9 +256,11 @@ rewrite one. `push` may not force, delete, mirror or push tags.
 **Staging** covers only the files the task generated, never the whole tree,
 so unrelated work in your repository is left alone.
 
-**GitHub** is limited to four calls, matched on method and path: create a
-pull request, list them, read one, and read the repository for its default
-branch. Merging, closing, deleting, commenting and reviewing are not
+**GitHub** is limited to a fixed set of calls, matched on method and path:
+create a pull request, read pull requests, read the repository's default
+branch, read issues, comment on one, and change an issue's labels or state.
+A `PATCH` on an issue may carry nothing but `labels` and `state`, so its
+title and body are out of reach. Merging, reviewing and deleting are not
 reachable.
 
 **Credentials** are read from the environment, never stored in the
