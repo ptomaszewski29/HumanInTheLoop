@@ -120,12 +120,33 @@ class GitHubIssueService(GitHubService):
         ]
 
     def close_issue(self, number: int) -> GitHubIssue:
-        """Closes an issue.
+        """Closes an issue, and never a pull request.
 
-        Never called by the pipeline. Closing someone's
-        issue is a judgement about whether the work is
-        done, so it stays a button a human presses.
+        Never called by the pipeline either way. Closing
+        someone's issue is a judgement about whether the
+        work is done, so it stays a button a human
+        presses.
+
+        The read first is not a formality. GitHub numbers
+        pull requests in the same sequence as issues and
+        serves them from the same endpoint, so
+        PATCH /issues/<pr number> with a state closes the
+        pull request -- which this platform must never do.
+        Nothing in the allow list distinguishes the two;
+        only asking does.
         """
+
+        existing = self._request(
+            "GET",
+            f"{self.issues_path()}/{int(number)}",
+        )
+
+        if existing.get("pull_request"):
+            raise GitHubError(
+                f"#{int(number)} is a pull request, not an "
+                "issue. Closing a pull request is a human "
+                "decision."
+            )
 
         data = self._request(
             "PATCH",

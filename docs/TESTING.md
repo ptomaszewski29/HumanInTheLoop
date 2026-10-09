@@ -78,6 +78,20 @@ findings must survive — including ones that use the same words, like
 Then the policy: a structural finding outranks the model entirely, even an
 explicit `REJECT`.
 
+### `tests.governance_test`
+
+The safe pull request workflow, asserted rather than described. Every git
+command the agents may run and every one they may not; every force and
+delete flag refused; a push to `main`, `master` or `develop` refused by
+the service rather than merely unused. Staging takes the generated file
+and leaves the user's alone. Merging, deleting, editing and approving a
+pull request are all outside the allow list, as are deployments and
+writing repository contents.
+
+And the subtle one: closing a pull request through the issues endpoint is
+refused, with nothing written while it is established. A governance
+document nobody runs is a document that drifts.
+
 ### `tests.context_test`
 
 Real folders. An empty one is `EMPTY`, one with code but no tooling is

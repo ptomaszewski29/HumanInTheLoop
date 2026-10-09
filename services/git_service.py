@@ -80,6 +80,21 @@ PUSH_TIMEOUT_SECONDS = 180
 # preference.
 BASE_BRANCH_CANDIDATES = ("main", "master")
 
+# Branches a push must never touch. The agent only ever
+# pushes feature/task-<id>, so this is defence in depth --
+# but a rule that is merely unused is not a rule, and the
+# one thing stopping a push to main should not be that
+# nobody happens to ask for it.
+PROTECTED_BRANCHES = frozenset(
+    {
+        "develop",
+        "main",
+        "master",
+        "release",
+        "trunk",
+    }
+)
+
 # A leading dash would reach git as a flag, not a name.
 VALID_REMOTE = re.compile(
     r"^[A-Za-z0-9_][A-Za-z0-9._-]{0,99}$"
@@ -414,6 +429,13 @@ class GitService:
         if not is_valid_branch(branch):
             raise GitError(
                 f"Invalid branch name: {branch!r}"
+            )
+
+        if branch.lower() in PROTECTED_BRANCHES:
+            raise GitError(
+                f"Refusing to push {branch!r}: this "
+                "platform pushes task branches only, and "
+                "never a shared branch."
             )
 
         if not self.has_remote(remote):

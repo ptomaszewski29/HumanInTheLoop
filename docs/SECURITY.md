@@ -52,6 +52,11 @@ and refuses anything not on this list:
 **Allowed:** `add`, `branch`, `checkout`, `commit`, `diff`, `ls-files`,
 `push`, `remote`, `rev-parse`, `status`, `symbolic-ref`
 
+**Shared branches are refused.** A push to `main`, `master`, `develop`,
+`release` or `trunk` fails in the service, whatever asked for it. The
+agent only ever pushes `feature/task-<id>`, so this is defence in depth —
+but a rule that holds only because nobody exercises it is not a rule.
+
 **Refused:** `pull`, `fetch`, `clone`, `rebase`, `merge`, `reset`, `tag`,
 `cherry-pick`, `submodule`
 
@@ -173,6 +178,25 @@ UI:
 
 A failure at any stage leaves the earlier stages intact. A failed push does
 not undo the approval; a failed pull request does not undo the push.
+
+---
+
+## A pull request is an issue, as far as the API is concerned
+
+The one place the allow list cannot do the work on its own.
+
+GitHub numbers pull requests in the same sequence as issues and serves
+them from `/issues/<number>`. `PATCH /issues/<n>` is allowed, restricted
+to `labels` and `state`, so that a run can label an issue it worked on —
+and `{"state": "closed"}` on a pull request's number would close the
+pull request. No pattern in the allow list can tell the two apart,
+because the paths are identical.
+
+So `close_issue` reads the target first and refuses anything carrying a
+`pull_request` field. Nothing is written while it finds out. It is the
+only call in the platform that spends a request to establish what it is
+about to touch, and it is worth it: closing a pull request is a decision
+this platform does not get to make.
 
 ---
 

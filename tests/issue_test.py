@@ -112,7 +112,22 @@ def fake_request(method: str, url: str, **kwargs):
         return FakeResponse(200, ISSUES)
 
     if method == "GET" and "/issues/" in path:
-        return FakeResponse(200, ISSUES[0])
+
+        # By number, so a pull request can be told from an
+        # issue: they share this endpoint on GitHub.
+        number = path.rsplit("/", 1)[-1]
+
+        return FakeResponse(
+            200,
+            next(
+                (
+                    item
+                    for item in ISSUES
+                    if str(item["number"]) == number
+                ),
+                ISSUES[0],
+            ),
+        )
 
     if method == "POST":
         return FakeResponse(
@@ -215,9 +230,26 @@ CALLS.clear()
 service.close_issue(101)
 
 check(
-    "it sends only the state",
+    "it reads first, then sends only the state",
     [payload for _, _, payload in CALLS],
-    [{"state": "closed"}],
+    [None, {"state": "closed"}],
+)
+
+# The read is what keeps a pull request safe. GitHub
+# numbers pull requests in the same sequence as issues and
+# serves them from the same endpoint, so nothing in the
+# allow list can tell them apart.
+CALLS.clear()
+
+refuses(
+    "closing a pull request through this endpoint",
+    lambda: service.close_issue(102),
+)
+
+check(
+    "and nothing was written while finding out",
+    [method for method, _, _ in CALLS],
+    ["GET"],
 )
 
 CALLS.clear()
