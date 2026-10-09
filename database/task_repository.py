@@ -48,6 +48,10 @@ COLUMNS = (
     "diffs",
     "status",
     "created_at",
+    # Read positionally in _to_task, so a new column is
+    # appended here and nowhere else: inserting one in the
+    # middle silently shifts every field after it.
+    "environment",
 )
 
 COLUMN_LIST = ",\n                ".join(COLUMNS)
@@ -65,6 +69,7 @@ ADDED_COLUMNS = {
     "warnings": "TEXT NOT NULL DEFAULT '[]'",
     "suggestions": "TEXT NOT NULL DEFAULT '[]'",
     "structural": "TEXT NOT NULL DEFAULT '[]'",
+    "environment": "TEXT NOT NULL DEFAULT '[]'",
     "review_history": "TEXT NOT NULL DEFAULT '[]'",
     "review_iterations": "INTEGER NOT NULL DEFAULT 0",
     "generated_files": "TEXT NOT NULL DEFAULT '[]'",
@@ -269,6 +274,7 @@ class TaskRepository:
                 diffs_json,
                 task.status.value,
                 task.created_at,
+                json.dumps(task.environment),
             ),
         )
 
@@ -576,6 +582,7 @@ class TaskRepository:
             diffs=self._parse_diffs(row[21]),
             status=TaskStatus(row[22]),
             created_at=row[23],
+            environment=self._parse_findings(row[24]),
         )
 
     def get_all(

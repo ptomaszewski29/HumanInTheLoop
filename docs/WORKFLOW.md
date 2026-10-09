@@ -90,11 +90,29 @@ alone. No Developer, no Architect, no QA.
 The planner is then told what the repository is and told not to plan
 setup, because setup already happened.
 
+**And it is said out loud.** Bootstrap ran silently at first, which was a
+mistake of exactly the kind this project exists to avoid: a plan of eleven
+tasks mentioned nothing about the environment, so the only honest reading
+was that project setup had been skipped. It had not — it had happened
+without telling anyone, which is worse than not happening.
+
+What a run writes into the repository is now recorded on the task and
+survives a restart, the plan carries a line saying what state the
+repository is in and what the scaffolding is, and the task's file list
+says what was created before any code. A repair nobody is told about is
+not a repair, it is a surprise.
+
 **Installing dependencies is a separate decision.** `npm install` reaches
 the network and runs whatever `postinstall` scripts the packages carry,
 which is a different kind of act from anything else here. It sits behind
 `ENABLE_PACKAGE_INSTALLATION`, off by default. Until it is on, the test
 gate reports `UNAVAILABLE` and says why rather than pretending.
+
+**And when the tests cannot run, the plan says so before you start.** A
+freshly bootstrapped repository has Vitest configured and not installed,
+so every task in a plan will report `UNAVAILABLE` rather than passing or
+failing. That is now a warning above the plan rather than something to
+discover eleven tasks later.
 
 **Only Vitest is supported.** Jest and Mocha are detected and reported as
 `DETECTED_BUT_UNSUPPORTED`, with a warning. Calling them "tests enabled"

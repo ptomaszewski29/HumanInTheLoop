@@ -43,7 +43,7 @@ class WorkflowOrchestrator:
 
         review_history: list[ReviewHistory] = []
 
-        self.prepare(repository_path)
+        created = self.prepare(repository_path)
 
         source_files = self.developer.execute(
             task_description,
@@ -194,6 +194,7 @@ class WorkflowOrchestrator:
             generated_files=generated_files,
             test_result=test_result,
             diffs=diffs,
+            environment=created,
             status=TaskStatus.WAITING_FOR_APPROVAL,
         )
 

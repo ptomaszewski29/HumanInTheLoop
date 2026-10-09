@@ -76,6 +76,13 @@ class Task:
     # What the reviewer was shown before approving.
     diffs: list[GitDiff] = field(default_factory=list)
 
+    # Scaffolding this run wrote into the repository before
+    # any code was generated. Recorded because it is a
+    # change to someone's folder that nothing else would
+    # mention: a repair nobody is told about is worse than
+    # no repair.
+    environment: list[str] = field(default_factory=list)
+
     status: TaskStatus = TaskStatus.NEW
 
     created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())

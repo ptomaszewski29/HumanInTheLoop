@@ -780,6 +780,73 @@ if st.session_state.plan:
         else ""
     )
 
+    if target_path:
+
+        # Nothing about the environment should have to be
+        # inferred from a plan that does not mention it.
+        # Bootstrap happens before the first task and used
+        # to happen silently, which left the plan looking
+        # like it had skipped project setup entirely.
+        environment = describe(target_path)
+
+        left, right = st.columns([3, 2])
+
+        with left:
+            st.caption(
+                f"📦 {environment.state.value} · "
+                + (
+                    "scaffolding: "
+                    + ", ".join(
+                        name
+                        for name in (
+                            "package.json",
+                            "tsconfig.json",
+                            "vitest.config.ts",
+                        )
+                        if name not in environment.missing
+                    )
+                    if not environment.missing
+                    else "missing: "
+                    + ", ".join(environment.missing)
+                )
+            )
+
+        with right:
+            st.caption(
+                "🧪 tests "
+                + (
+                    "runnable"
+                    if environment.tests_runnable
+                    else "cannot run"
+                )
+            )
+
+        if (
+            environment.missing
+            and Settings.AUTO_BOOTSTRAP
+        ):
+            st.info(
+                "Created automatically before the first "
+                "task runs: "
+                + ", ".join(environment.missing)
+            )
+
+        if not environment.tests_runnable:
+            st.warning(
+                "The test gate cannot run here, so every "
+                "task in this plan will report "
+                "UNAVAILABLE rather than passing or "
+                "failing. "
+                + (
+                    "Run `npm install` in "
+                    f"{target_path}."
+                    if environment.test_framework.supported
+                    else "This project is not set up for "
+                    "Vitest, which is the only runner "
+                    "this platform drives."
+                )
+            )
+
     # A run-all does one task per script run, so the page
     # repaints between tasks instead of freezing until the
     # last one. The task is marked as running and saved
@@ -1503,6 +1570,17 @@ if st.session_state.task:
     with tab_files:
 
         root = task_root
+
+        if task.environment:
+
+            # A change this run made to the repository that
+            # is not a generated file, so nothing else here
+            # would mention it.
+            st.info(
+                "This run created the project scaffolding "
+                "before writing any code: "
+                + ", ".join(task.environment)
+            )
 
         if not task.generated_files:
 

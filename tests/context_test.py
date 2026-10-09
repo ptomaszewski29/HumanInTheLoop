@@ -396,6 +396,73 @@ check(
 
 print()
 print("=" * 80)
+print("WHAT BOOTSTRAP WROTE IS RECORDED, NOT ASSUMED")
+print("=" * 80)
+
+# Scaffolding is a change to someone's repository that no
+# generated-file list would mention. It ran silently once,
+# and a plan of eleven tasks then looked like it had
+# skipped project setup entirely.
+import sqlite3
+
+from database.task_repository import TaskRepository
+from models.task import Task
+from models.task_status import TaskStatus
+
+database = os.path.join(folder(), "tasks.db")
+
+recorded = Task(
+    description="x",
+    status=TaskStatus.APPROVED,
+    environment=["package.json", "tsconfig.json"],
+)
+
+TaskRepository(database).save(recorded)
+
+restored = TaskRepository(database).get_by_id(recorded.id)
+
+check(
+    "it survives a restart",
+    restored.environment,
+    ["package.json", "tsconfig.json"],
+)
+
+check(
+    "and the fields after it are not shifted",
+    (restored.status, restored.description),
+    (TaskStatus.APPROVED, "x"),
+)
+
+legacy = os.path.join(folder(), "legacy.db")
+
+TaskRepository(legacy).save(Task(description="old"))
+
+connection = sqlite3.connect(legacy)
+
+connection.execute(
+    "ALTER TABLE tasks DROP COLUMN environment"
+)
+
+connection.commit()
+
+connection.close()
+
+older = TaskRepository(legacy).get_all()
+
+check(
+    "a row written before the column still loads",
+    (older[0].description, older[0].environment),
+    ("old", []),
+)
+
+check(
+    "a run that created nothing records nothing",
+    Task(description="x").environment,
+    [],
+)
+
+print()
+print("=" * 80)
 
 if failures:
     print(f"FAILED: {len(failures)}")

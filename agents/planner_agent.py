@@ -24,13 +24,15 @@ Rules:
   before it
 - interfaces and contracts come before the
   code that implements them
-- tests come after what they test
+- do not plan test files: a suite is written for
+  every source file as part of the task that
+  creates it, so a task for tests is work that
+  has already happened
 - a dependency is the id of an earlier task
 - priority is HIGH, MEDIUM or LOW:
   foundational abstractions, interfaces and
   contracts are HIGH; implementations and
-  providers are MEDIUM; tests and
-  documentation are LOW
+  providers are MEDIUM; everything else is LOW
 - do not plan deployment, infrastructure or
   documentation unless the epic asks for it
 - do not plan project setup: creating
