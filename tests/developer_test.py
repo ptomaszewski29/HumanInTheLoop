@@ -411,6 +411,82 @@ check(
     ["src/real.ts"],
 )
 
+# The guard started life beside the planning call, and the
+# fallback path walked straight past it: a 3B model wrote
+# both example files to disk through the single call. It
+# now sits on the way out, where every path goes.
+leaky = FakeLLM(plan="not json")
+
+leaky.extra = ()
+
+
+class EchoingLLM(FakeLLM):
+    def generate_text(self, prompt):
+
+        self.prompts.append(prompt)
+
+        return json.dumps(
+            {
+                "files": [
+                    {
+                        "path": "src/example-one.ts",
+                        "content": "export class One {}",
+                    },
+                    {
+                        "path": "src/real.ts",
+                        "content": "export class Real {}",
+                    },
+                ]
+            }
+        )
+
+
+Settings.GENERATE_FILE_BY_FILE = False
+
+check(
+    "the single call drops the example too",
+    [
+        item.path
+        for item in developer(EchoingLLM()).execute("Build it.")
+    ],
+    ["src/real.ts"],
+)
+
+
+class OnlyExamplesLLM(FakeLLM):
+    def generate_text(self, prompt):
+
+        self.prompts.append(prompt)
+
+        return json.dumps(
+            {
+                "files": [
+                    {
+                        "path": path,
+                        "content": "export class X {}",
+                    }
+                    for path in sorted(EXAMPLE_PATHS)
+                ]
+            }
+        )
+
+
+only = developer(OnlyExamplesLLM()).execute("Build it.")
+
+check(
+    "an answer that is nothing but the example is not empty",
+    bool(only),
+    True,
+)
+
+check(
+    "and what comes back is not an example path",
+    any(item.path in EXAMPLE_PATHS for item in only),
+    False,
+)
+
+Settings.GENERATE_FILE_BY_FILE = True
+
 check(
     "the prompt tells the model not to reuse them",
     "never use them" in llm.prompts[0],

@@ -68,6 +68,13 @@ Does not own: anything about the code that task produces.
 
 Writes the source files, one call per file.
 
+Before either, it reads the repository. `repository_survey` walks the
+folder and collects what is there with what each file exports — no model
+involved, because the filesystem knows. That listing goes into the
+planning call, so a task can reuse what an earlier one wrote instead of
+inventing it again, and a planned file that already exists is written as
+an edit with its current content in hand rather than overwritten blind.
+
 `execute` asks for the file list first — paths and one sentence each, no
 code — and then writes each file in its own call, giving the model the
 whole list as context so imports line up. `improve` does not regenerate
@@ -208,6 +215,7 @@ its own test.
 | `finding_filter` | drops claims the validator owns, caps review length |
 | `file_parser` | a model's JSON into files, through truncation and bad quoting alike |
 | `import_repair` | cuts an import a file makes of itself, and says so |
+| `repository_survey` | what is already on disk, and what it exports |
 | `file_writer` | writes inside the repository, and nowhere else |
 | `file_naming` | derives repository paths from the generated code |
 | `file_bundle` | renders a file set for prompts and display |

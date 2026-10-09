@@ -10,6 +10,7 @@ from services.finding_filter import cap, drop_structural
 from services.llm_factory import (
     LLMFactory,
 )
+from services.repository_survey import survey
 from services.review_history_formatter import (
     ReviewHistoryFormatter,
 )
@@ -52,6 +53,7 @@ class ArchitectAgent:
         review_history: list[
             ReviewHistory
         ] | None = None,
+        repository_path: str = "",
     ) -> ArchitectureReview:
 
         history = review_history or []
@@ -65,9 +67,15 @@ class ArchitectAgent:
         # Imports, missing files and requirement coverage
         # are facts about the file set, so they are decided
         # here rather than left to the model.
+        # What is already in the repository counts as
+        # known. Without it, importing a file an earlier
+        # task wrote reads as importing a file that does
+        # not exist, and the loop spends a round chasing a
+        # problem nobody has.
         report = StructureValidator.validate(
             source_files,
             task_description,
+            survey(repository_path),
         )
 
         structural_findings = report.blockers

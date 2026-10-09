@@ -41,7 +41,10 @@ class WorkflowOrchestrator:
 
         review_history: list[ReviewHistory] = []
 
-        source_files = self.developer.execute(task_description)
+        source_files = self.developer.execute(
+            task_description,
+            repository_path,
+        )
 
         if not source_files:
 
@@ -55,6 +58,7 @@ class WorkflowOrchestrator:
                 task_description,
                 source_files,
                 review_history,
+                repository_path,
             )
 
             review_iterations += 1
@@ -91,6 +95,7 @@ class WorkflowOrchestrator:
                 task_description,
                 source_files,
                 self.fix_brief(architecture_review),
+                repository_path,
             )
 
         test_files = self.qa.execute(source_files)
@@ -124,12 +129,14 @@ class WorkflowOrchestrator:
                     source_files,
                     test_files,
                 ),
+                repository_path,
             )
 
             architecture_review = self.architect.execute(
                 task_description,
                 source_files,
                 review_history,
+                repository_path,
             )
 
             review_iterations += 1

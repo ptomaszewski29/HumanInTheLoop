@@ -78,6 +78,20 @@ findings must survive — including ones that use the same words, like
 Then the policy: a structural finding outranks the model entirely, even an
 explicit `REJECT`.
 
+### `tests.survey_test`
+
+Real folders on disk, no model. Source and notable config are found;
+`node_modules`, builds and `.git` are not. Exports are read so imports can
+be checked, and a barrel or a default export is marked unreadable rather
+than empty — an import from one must not be called broken. A missing
+folder surveys as empty rather than raising.
+
+Then what it is for: an import of a file already in the repository is not
+a missing file, a name that file does not export still is, and a file this
+task rewrites is judged by its new exports rather than the ones on disk.
+The planning call is shown the listing, and a planned file that exists is
+written as an edit with its current content.
+
 ### `tests.qa_test`
 
 A suite per source file, with the model faked. Type declarations, barrels

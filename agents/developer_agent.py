@@ -7,6 +7,10 @@ from services.file_naming import FileNaming
 from services.file_parser import FileParseError, FileParser
 from services.import_repair import drop_self_imports
 from services.llm_factory import LLMFactory
+from services.repository_survey import (
+    RepositorySurvey,
+    survey,
+)
 
 # The paths in these examples are deliberately not names
 # any real task would produce. A small model copies a
@@ -101,23 +105,42 @@ class DeveloperAgent:
     def execute(
         self,
         task: str,
+        repository_path: str = "",
     ) -> list[GeneratedFile]:
+
+        found = survey(repository_path)
+
+        if not found.empty:
+            print(
+                f"DEVELOPER: the repository already holds "
+                f"{len(found.files)} file(s)"
+            )
 
         if Settings.GENERATE_FILE_BY_FILE:
 
-            planned = self._plan(task)
+            planned = self._plan(task, found)
 
             if planned:
-                return self._write_each(task, planned)
+                return self._write_each(
+                    task,
+                    planned,
+                    found,
+                )
 
-        return self._generate(self._one_call_prompt(task), task)
+        return self._generate(
+            self._one_call_prompt(task, found),
+            task,
+        )
 
     def improve(
         self,
         task: str,
         files: list[GeneratedFile],
         review: str,
+        repository_path: str = "",
     ) -> list[GeneratedFile]:
+
+        found = survey(repository_path)
 
         if Settings.GENERATE_FILE_BY_FILE:
 
@@ -129,6 +152,7 @@ class DeveloperAgent:
                     files,
                     review,
                     targets,
+                    found,
                 )
 
         prompt = f"""
@@ -166,7 +190,30 @@ remove files when the review asks for it.
     # file by file
     # ------------------------------------------------
 
-    def _plan(self, task: str) -> list[tuple[str, str]]:
+    @staticmethod
+    def _repository_section(found: RepositorySurvey) -> str:
+        """What the model is told is already on disk."""
+
+        if found.empty:
+            return ""
+
+        return f"""
+The repository already contains these files:
+{found.render()}
+
+Work with them. Import what they already export
+rather than writing it again. Name one of them
+in your list only if this task means to change
+it -- a file you name is a file that gets
+rewritten. Anything this task needs that is not
+there, name as a new file.
+"""
+
+    def _plan(
+        self,
+        task: str,
+        found: RepositorySurvey | None = None,
+    ) -> list[tuple[str, str]]:
         """The files to write, as (path, purpose).
 
         An empty list means the planning call was unusable
@@ -174,12 +221,14 @@ remove files when the review asks for it.
         everything -- a thin answer beats no answer.
         """
 
+        found = found or RepositorySurvey()
+
         prompt = f"""
 You are a Senior TypeScript Developer.
 
 Task:
 {task}
-
+{self._repository_section(found)}
 List only the files this task actually needs.
 
 Match the list to the task. "Initialise a node
@@ -229,7 +278,12 @@ One file is a perfectly good answer. At most
         print("=" * 80)
 
         for path, purpose in planned:
-            print(f"- {path}: {purpose}")
+
+            mark = (
+                "change" if found.has(path) else "new"
+            )
+
+            print(f"- [{mark}] {path}: {purpose}")
 
         print("=" * 80)
 
@@ -252,8 +306,11 @@ One file is a perfectly good answer. At most
         self,
         task: str,
         planned: list[tuple[str, str]],
+        found: RepositorySurvey | None = None,
     ) -> list[GeneratedFile]:
         """Writes the planned files, a batch per call."""
+
+        found = found or RepositorySurvey()
 
         listing = "\n".join(
             f"- {path}: {purpose}"
@@ -273,7 +330,12 @@ One file is a perfectly good answer. At most
             )
 
             files.extend(
-                self._write_batch(task, listing, batch)
+                self._write_batch(
+                    task,
+                    listing,
+                    batch,
+                    found,
+                )
             )
 
         if not files:
@@ -305,6 +367,7 @@ One file is a perfectly good answer. At most
         task: str,
         listing: str,
         batch: list[tuple[str, str]],
+        found: RepositorySurvey | None = None,
     ) -> list[GeneratedFile]:
         """One call's worth of files.
 
@@ -323,6 +386,7 @@ One file is a perfectly good answer. At most
                 listing,
                 path,
                 purpose,
+                found=found,
             )
 
             return (
@@ -401,6 +465,7 @@ them.
         purpose: str,
         existing: str = "",
         review: str = "",
+        found: RepositorySurvey | None = None,
     ) -> str:
         """One file's content, or '' if the call failed.
 
@@ -411,15 +476,27 @@ them.
         not.
         """
 
+        found = found or RepositorySurvey()
+
+        # Nothing in hand, but the file is on disk: this is
+        # an edit, and overwriting it blind is how a plan's
+        # later task wipes out an earlier one's work.
+        if not existing and found.has(path):
+            existing = found.read(path)
+
         current = (
             f"""
-The file as it stands:
+The file as it stands. Change it; keep what
+still applies and do not rewrite what this
+task does not touch:
 
 {existing}
 """
             if existing
             else ""
         )
+
+        around = self._repository_section(found)
 
         correction = (
             f"""
@@ -439,7 +516,7 @@ You are a Senior TypeScript Developer.
 
 Overall task:
 {task}
-
+{around}
 The solution is split across these files:
 {listing}
 
@@ -514,6 +591,7 @@ Its job: {purpose}
         files: list[GeneratedFile],
         review: str,
         targets: list[str],
+        found: RepositorySurvey | None = None,
     ) -> list[GeneratedFile]:
         """Rewrites the named files, keeps the rest as they are."""
 
@@ -539,6 +617,7 @@ Its job: {purpose}
                 "as described by the review",
                 existing.content if existing else "",
                 review,
+                found,
             )
 
             if not content:
@@ -571,15 +650,18 @@ Its job: {purpose}
     # one call for everything
     # ------------------------------------------------
 
-    @staticmethod
-    def _one_call_prompt(task: str) -> str:
+    def _one_call_prompt(
+        self,
+        task: str,
+        found: RepositorySurvey | None = None,
+    ) -> str:
 
         return f"""
 You are a Senior TypeScript Developer.
 
 Task:
 {task}
-
+{self._repository_section(found or RepositorySurvey())}
 Split the solution into the files a real
 project would have: one interface, service,
 provider or component per file.
@@ -605,6 +687,21 @@ provider or component per file.
 
         files = self._settle(files)
 
+        # Nothing left once the example was removed: the
+        # model answered with the illustration and nothing
+        # else, so treat the answer as unusable rather
+        # than returning an empty set.
+        if not files:
+            files = self._settle(
+                self._single_file(
+                    raw,
+                    task,
+                    ValueError(
+                        "the answer was the format example"
+                    ),
+                )
+            )
+
         self._announce(files)
 
         return files
@@ -622,7 +719,29 @@ provider or component per file.
         not.
         """
 
-        repaired, notes = drop_self_imports(files)
+        kept: list[GeneratedFile] = []
+
+        for item in files:
+
+            if item.path in EXAMPLE_PATHS:
+
+                # The guard sits here, on the way out,
+                # rather than next to the planning call
+                # where it started: the fallback path has
+                # the same prompt and the same example, and
+                # a 3B model wrote both example files to
+                # disk through it.
+                print(
+                    "DEVELOPER: dropped "
+                    f"{item.path}, which is the format "
+                    "example rather than an answer"
+                )
+
+                continue
+
+            kept.append(item)
+
+        repaired, notes = drop_self_imports(kept)
 
         for note in notes:
             print(f"DEVELOPER: {note}")

@@ -354,7 +354,17 @@ class StructureValidator:
     def validate(
         files: list[GeneratedFile],
         task_description: str = "",
+        existing=None,
     ) -> StructureReport:
+        """Checks a file set, optionally against a repository.
+
+        'existing' is a RepositorySurvey. Without it, every
+        import has to resolve inside this task's own
+        output, which is right for a task on an empty
+        folder and wrong for every later one: importing a
+        file an earlier task wrote would be reported as
+        importing a file that does not exist.
+        """
 
         report = StructureReport(file_count=len(files))
 
@@ -370,6 +380,23 @@ class StructureValidator:
             )
             for item in files
         }
+
+        # What is on disk counts as known, but anything
+        # this task wrote wins: it is the newer version of
+        # the same file.
+        opaque: set[str] = set()
+
+        if existing is not None:
+
+            known |= set(existing.files) | set(
+                existing.exports
+            )
+
+            opaque = set(existing.opaque)
+
+            for path, names in existing.exports.items():
+
+                exports_by_path.setdefault(path, names)
 
         graph: dict[str, set[str]] = {
             item.path: set() for item in files
@@ -398,6 +425,16 @@ class StructureValidator:
                         f"{item.path} imports '{target}' "
                         "but no such file was generated"
                     )
+
+                    continue
+
+                # A file already in the repository whose
+                # exports could not be read: the import may
+                # be perfectly good, so it is not a finding.
+                if resolved in opaque:
+
+                    if resolved in graph:
+                        graph[item.path].add(resolved)
 
                     continue
 

@@ -155,6 +155,43 @@ log that was on screen before it:
 
 ---
 
+## What is already there
+
+Every task used to start as though the folder were empty. On a plan of a
+dozen tasks that is a dozen fresh starts: the task that adds an SMS
+provider writes its own `Provider` interface rather than implementing the
+one the task before it just created.
+
+So the repository is read before anything is planned. The walk is
+deterministic — paths and exported names, skipping `node_modules`, builds
+and git's own files — and what it finds goes into the planning call:
+
+```text
+The repository already contains these files:
+- src/Channel.ts (exports Channel)
+- src/Provider.ts (exports Provider)
+```
+
+Three things follow from it.
+
+The plan can **name an existing file**, which marks it as a change rather
+than a new file. That file is then written with its current content in
+hand and an instruction to keep what still applies, instead of being
+overwritten by whatever the model would have written from scratch.
+
+The validator stops calling existing files missing. Without the survey,
+importing a file an earlier task wrote reads as importing a file that does
+not exist, and the review loop spends a round chasing a problem nobody
+has. A name the existing file genuinely does not export is still a
+finding.
+
+And a listing has a budget. Sixty files reach the prompt; past that it
+says how many it left out. A bigger listing would push the task
+description out of the context, which is a worse failure than an
+incomplete picture.
+
+---
+
 ## Cycles
 
 A circular dependency is a fact, and until recently it was passed to the

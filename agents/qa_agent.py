@@ -6,6 +6,12 @@ from services.file_bundle import FileBundle
 from services.file_parser import FileParseError, FileParser
 from services.llm_factory import LLMFactory
 
+# The same trap as in the developer: a small model answers
+# with the path it was shown, so the path it is shown is
+# one no real project would have, and it is dropped if it
+# comes back anyway.
+EXAMPLE_TEST_PATH = "tests/example-one.test.ts"
+
 # Files there is nothing to assert about: a config file, a
 # barrel, a file of nothing but types. Writing a suite for
 # one costs a call and produces a test that asserts the
@@ -221,6 +227,12 @@ No explanations outside the JSON.
 
         except (FileParseError, ValueError) as error:
             tests = self._single_file(raw, files, error)
+
+        tests = [
+            item
+            for item in tests
+            if item.path != EXAMPLE_TEST_PATH
+        ]
 
         self._announce(tests)
 

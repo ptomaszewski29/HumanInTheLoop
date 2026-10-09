@@ -164,7 +164,12 @@ depended on it still blocked. **🔁 Uruchom ponownie** retries one.
 
 Write what you want and press **Generuj kod**.
 
-The Developer asks for the file list first, then writes each file in its
+The Developer reads the repository first — what is there and what each
+file exports — so a task builds on what earlier tasks wrote instead of
+reinventing it. A file that already exists is edited rather than
+overwritten.
+
+It then asks for the file list, and writes each file in its
 own call. Writing one file at a time is what gets real code instead of
 stubs, and the plan is sized to the task — "Create package.json" plans one
 file, a notification platform plans eight.
