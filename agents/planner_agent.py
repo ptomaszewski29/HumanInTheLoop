@@ -2,6 +2,7 @@ from models.plan import Plan
 from models.task_breakdown import Priority, TaskBreakdown
 from services.file_parser import FileParseError, FileParser
 from services.llm_factory import LLMFactory
+from services.repository_context import describe
 
 MAX_TASKS = 12
 
@@ -13,7 +14,7 @@ developer can build one at a time.
 
 Epic:
 {epic}
-
+{repository}
 Rules:
 
 - between 2 and {maximum} tasks
@@ -32,6 +33,11 @@ Rules:
   documentation are LOW
 - do not plan deployment, infrastructure or
   documentation unless the epic asks for it
+- do not plan project setup: creating
+  package.json, a tsconfig, a test config or a
+  folder structure is handled before you, and a
+  task for it would run the whole pipeline to
+  write a file that already exists
 
 Return only JSON in exactly this shape:
 
@@ -167,10 +173,35 @@ class PlannerAgent:
         self,
         epic: str,
         repository_id: str = "",
+        repository_path: str = "",
     ) -> Plan:
 
+        # The same requirement is different work in an
+        # empty folder and in a running project. Without
+        # this the planner assumed one baseline and
+        # produced "Initialize Node project" as a task,
+        # which then ran the whole pipeline -- developer,
+        # architect, QA, test gate -- for twenty-three
+        # minutes to make a file a template writes
+        # instantly.
+        context = describe(repository_path)
+
+        print("=" * 80)
+        print("REPOSITORY CONTEXT")
+        print("=" * 80)
+        print(context.summary())
+        print("=" * 80)
+
         raw = self.llm.generate_text(
-            PROMPT.format(epic=epic, maximum=MAX_TASKS)
+            PROMPT.format(
+                epic=epic,
+                maximum=MAX_TASKS,
+                repository=(
+                    chr(10) + context.render() + chr(10)
+                    if repository_path
+                    else ""
+                ),
+            )
         )
 
         try:

@@ -216,6 +216,8 @@ its own test.
 | `file_parser` | a model's JSON into files, through truncation and bad quoting alike |
 | `import_repair` | cuts an import a file makes of itself, and says so |
 | `repository_survey` | what is already on disk, and what it exports |
+| `repository_context` | what the repository *is*: state, tooling, test framework |
+| `bootstrap` | writes the scaffolding a repository is missing, from templates |
 | `file_writer` | writes inside the repository, and nowhere else |
 | `file_naming` | derives repository paths from the generated code |
 | `file_bundle` | renders a file set for prompts and display |

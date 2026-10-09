@@ -54,6 +54,26 @@ class Settings:
 
     MAX_REVIEW_LOOPS = 3
 
+    # Write the package.json, tsconfig and Vitest config a
+    # repository is missing, from templates, before the
+    # first task runs. Only ever creates what is absent --
+    # an existing file is somebody's and is left alone.
+    #
+    # Off means the planner is still told not to plan
+    # setup tasks, so an empty repository produces code
+    # that cannot be built or tested. Leave it on unless
+    # the scaffolding is managed elsewhere.
+    AUTO_BOOTSTRAP = True
+
+    # Running `npm install` would make the test gate work
+    # on a fresh repository -- and it reaches the network
+    # and runs whatever postinstall scripts the packages
+    # carry. That is a different kind of act from
+    # anything else here, so it is a deliberate switch and
+    # not a side effect of bootstrapping. Off: the gate
+    # reports why it could not run instead.
+    ENABLE_PACKAGE_INSTALLATION = False
+
     # Ask for the file list first, then write each file in
     # its own call. One call for the whole set makes the
     # model spread one answer's worth of tokens across

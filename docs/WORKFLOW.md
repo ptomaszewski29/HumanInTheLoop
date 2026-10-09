@@ -61,6 +61,47 @@ button a human presses.
 
 ---
 
+## Before planning
+
+The planner used to see the requirement and nothing else, so it assumed
+one baseline for every repository. Given an empty folder it planned
+"Initialize Node project" as a task — which then ran the developer, three
+rounds of architect, QA and the test gate for twenty-three minutes to
+produce a file a template writes instantly.
+
+So the repository is described first, deterministically:
+
+| State | Meaning |
+|---|---|
+| `EMPTY` | nothing of ours in it |
+| `BOOTSTRAP_REQUIRED` | code, but not the tooling to build or test it |
+| `PROJECT_READY` | development can start |
+
+None of this is asked of a model. Whether a `package.json` exists is a
+fact the filesystem holds, and a model asked for it can be confidently
+wrong about a folder it cannot see.
+
+**Scaffolding is written from templates.** A `package.json`, a
+`tsconfig.json` and a Vitest config for a project like this one are known
+exactly, so `AUTO_BOOTSTRAP` writes whatever is missing before the first
+task. Only what is missing: an existing file is somebody's and is left
+alone. No Developer, no Architect, no QA.
+
+The planner is then told what the repository is and told not to plan
+setup, because setup already happened.
+
+**Installing dependencies is a separate decision.** `npm install` reaches
+the network and runs whatever `postinstall` scripts the packages carry,
+which is a different kind of act from anything else here. It sits behind
+`ENABLE_PACKAGE_INSTALLATION`, off by default. Until it is on, the test
+gate reports `UNAVAILABLE` and says why rather than pretending.
+
+**Only Vitest is supported.** Jest and Mocha are detected and reported as
+`DETECTED_BUT_UNSUPPORTED`, with a warning. Calling them "tests enabled"
+would be a claim the test gate contradicts the moment it runs.
+
+---
+
 ## Planning
 
 A plan is optional. You can describe one task and skip the Planner

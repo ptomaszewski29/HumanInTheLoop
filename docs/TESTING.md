@@ -78,6 +78,20 @@ findings must survive — including ones that use the same words, like
 Then the policy: a structural finding outranks the model entirely, even an
 explicit `REJECT`.
 
+### `tests.context_test`
+
+Real folders. An empty one is `EMPTY`, one with code but no tooling is
+`BOOTSTRAP_REQUIRED`, and one with the scaffolding is `PROJECT_READY`. A
+malformed `package.json` is a state a repository can be in rather than a
+crash. A test framework is read from its config file first and the
+manifest second.
+
+The sharp one: Jest configured and installed is still not runnable here,
+because the gate drives Vitest only — saying otherwise would be a claim
+the gate contradicts. Bootstrap writes only what is missing, never over an
+existing file, and writes nothing the second time. The planner is checked
+to receive the description and the instruction not to plan setup.
+
 ### `tests.survey_test`
 
 Real folders on disk, no model. Source and notable config are found;

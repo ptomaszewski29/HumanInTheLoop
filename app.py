@@ -21,6 +21,7 @@ from models.file_type import FileType
 from models.git_push_operation import PushStatus
 from models.pull_request_info import PullRequestState
 from models.repository import Repository
+from models.repository_context import TestFramework
 from models.requirement import Requirement, now
 from models.task import Task
 from models.task_execution import (
@@ -32,6 +33,7 @@ from models.test_result import TestStatus
 from services.file_writer import FileWriter
 from services.git_diff_service import GitDiffService
 from services.git_service import GitError, GitService
+from services.repository_context import describe
 from workflows.workflow_orchestrator import (
     WorkflowOrchestrator,
 )
@@ -73,6 +75,16 @@ if "issues" not in st.session_state:
 repositories = repository_store.get_all()
 
 repositories_by_id = {item.id: item for item in repositories}
+
+
+def repository_path_now() -> str:
+    """The selected repository's folder, or ''."""
+
+    selected = repositories_by_id.get(
+        st.session_state.get("repository_id")
+    )
+
+    return selected.path if selected else ""
 
 
 def resolve_repository(task_like):
@@ -294,6 +306,96 @@ with st.sidebar:
                 "Path not found on this machine. "
                 "File generation will need a real folder."
             )
+
+        else:
+
+            # Read from disk every time it is drawn. A
+            # stored context would be wrong the moment a
+            # task writes a file.
+            context = describe(active_repository.path)
+
+            with st.expander(
+                f"📦 Repository context — {context.state.value}",
+                expanded=context.bootstrap_needed,
+            ):
+
+                left, right = st.columns(2)
+
+                with left:
+                    st.metric(
+                        "TypeScript",
+                        "yes" if context.typescript else "no",
+                    )
+                    st.metric(
+                        "Tests runnable",
+                        "yes" if context.tests_runnable else "no",
+                    )
+
+                with right:
+                    st.metric(
+                        "package.json",
+                        "yes" if context.package_json else "no",
+                    )
+                    st.metric(
+                        "Git",
+                        "yes" if context.git else "no",
+                    )
+
+                framework = (
+                    context.test_framework.value.title()
+                    if context.test_framework
+                    != TestFramework.NONE
+                    else "none"
+                )
+
+                st.caption(
+                    f"{context.file_count} source file(s) · "
+                    f"test framework: {framework}"
+                    + (
+                        " · folders: "
+                        + ", ".join(context.source_folders)
+                        if context.source_folders
+                        else ""
+                    )
+                )
+
+                if context.missing:
+
+                    st.info(
+                        "Created automatically before the "
+                        "first task: "
+                        + ", ".join(context.missing)
+                        if Settings.AUTO_BOOTSTRAP
+                        else "Missing, and AUTO_BOOTSTRAP "
+                        "is off: "
+                        + ", ".join(context.missing)
+                    )
+
+                if (
+                    context.test_framework
+                    == TestFramework.VITEST
+                    and not context.dependencies_installed
+                ):
+
+                    st.warning(
+                        "Vitest is configured but not "
+                        "installed, so the test gate "
+                        "cannot run. Run `npm install` in "
+                        "this folder."
+                    )
+
+                elif context.test_framework not in (
+                    TestFramework.NONE,
+                    TestFramework.VITEST,
+                ):
+
+                    st.warning(
+                        f"This project uses "
+                        f"{context.test_framework.value.title()}. "
+                        "The test gate drives Vitest only, "
+                        "so generated tests will not be "
+                        "run."
+                    )
 
         linked_tasks = sum(
             1
@@ -628,6 +730,7 @@ if st.session_state.requirement:
                     plan = PlannerAgent().execute(
                         requirement.epic,
                         st.session_state.repository_id,
+                        repository_path_now(),
                     )
 
                 except Exception as error:

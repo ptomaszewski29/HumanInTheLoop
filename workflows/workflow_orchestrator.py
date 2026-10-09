@@ -12,8 +12,10 @@ from models.review_history import (
 )
 from models.task import Task
 from models.task_status import TaskStatus
+from services.bootstrap import bootstrap
 from services.file_writer import FileWriter
 from services.git_diff_service import GitDiffService
+from services.repository_context import describe
 from workflows.review_decision import (
     ReviewDecision,
 )
@@ -40,6 +42,8 @@ class WorkflowOrchestrator:
         review_iterations = 0
 
         review_history: list[ReviewHistory] = []
+
+        self.prepare(repository_path)
 
         source_files = self.developer.execute(
             task_description,
@@ -192,6 +196,32 @@ class WorkflowOrchestrator:
             diffs=diffs,
             status=TaskStatus.WAITING_FOR_APPROVAL,
         )
+
+    @staticmethod
+    def prepare(repository_path: str) -> list[str]:
+        """Scaffolding, before a single task is written.
+
+        Deterministic on purpose. The alternative was a
+        planned task per config file, and one of those
+        took twenty-three minutes of model time to produce
+        a package.json.
+        """
+
+        if not Settings.AUTO_BOOTSTRAP:
+            return []
+
+        created = bootstrap(
+            repository_path,
+            describe(repository_path),
+        )
+
+        if created:
+            print(
+                "BOOTSTRAP: created "
+                + ", ".join(created)
+            )
+
+        return created
 
     @staticmethod
     def fix_brief(review) -> str:

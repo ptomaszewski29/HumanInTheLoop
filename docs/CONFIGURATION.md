@@ -171,6 +171,27 @@ returned the same eleven files with twenty characters changed. It now
 rewrites only the files the review is about — worked out in code by reading
 the paths out of the review text — and leaves the others byte-identical.
 
+### Scaffolding and dependencies
+
+**`AUTO_BOOTSTRAP`** — write the `package.json`, `tsconfig.json` and
+Vitest config a repository is missing, from templates, before the first
+task runs. Only ever creates what is absent.
+
+Off means the planner is still told not to plan setup tasks, so an empty
+repository produces code that cannot be built or tested. Leave it on
+unless the scaffolding is managed elsewhere.
+
+**`ENABLE_PACKAGE_INSTALLATION`** — whether `npm install` may be run.
+Default `False`, and deliberately so: it reaches the network and executes
+whatever `postinstall` scripts the packages carry. That is a different
+class of act from writing a config file, so it is a switch somebody turns
+on rather than a side effect of bootstrapping.
+
+While it is off, a freshly bootstrapped repository has Vitest configured
+and not installed, so the test gate reports `UNAVAILABLE` with the reason
+and the fix. The repository context panel says the same thing before you
+start rather than after.
+
 ### The settings that actually matter
 
 **`OLLAMA_NUM_PREDICT`** — how many tokens a single answer may use.

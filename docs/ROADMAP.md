@@ -53,6 +53,7 @@ What has been built, in the order it was built, and what the next step is.
 | 9.1 | **Requirements workspace** — one place where work is described, and the planner's only input |
 | 9.5 | **Execution layer** — every attempt is recorded, failures survive a restart, and a plan reports where it stands |
 | 9.5B.1 | **Live progress** — a run-all advances one task per script run, so the dashboard, the log and failures appear while the plan runs |
+| 9.6 | **Repository context** — the state of the folder is read before planning, scaffolding is written from templates, and the planner stops inventing setup tasks |
 | — | **One call per file** — the Developer plans the file list, then writes each file in its own call; a review round rewrites only what it names |
 | 10 | **GitHub issues** — a backlog becomes requirements, and a pull request reports back to the issue it came from |
 
@@ -95,6 +96,13 @@ more of the model onto the CPU, and batching files into one call bought
 nothing (the token count is the same either way) while making a single
 timeout cost three files instead of one. Measure where the time goes
 before changing what produces it.
+
+**9.6** — the planner was asked to decide something it had no way of
+knowing. Whether a `package.json` exists is not a judgement, and a model
+asked for it answers confidently about a folder it cannot see. The same
+line runs through this sprint twice: facts are collected, scaffolding is a
+template, and the only thing left for the model is the work the
+requirement actually asks for.
 
 **One call per file** — "how much code comes out" turned out to be three
 separate problems wearing one coat. A parser that lost a file to an unescaped
