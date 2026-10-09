@@ -181,16 +181,25 @@ Off means the planner is still told not to plan setup tasks, so an empty
 repository produces code that cannot be built or tested. Leave it on
 unless the scaffolding is managed elsewhere.
 
-**`ENABLE_PACKAGE_INSTALLATION`** — whether `npm install` may be run.
-Default `False`, and deliberately so: it reaches the network and executes
-whatever `postinstall` scripts the packages carry. That is a different
-class of act from writing a config file, so it is a switch somebody turns
-on rather than a side effect of bootstrapping.
+**`ENABLE_PACKAGE_INSTALLATION`** — whether the **Run npm install**
+button exists.
 
-While it is off, a freshly bootstrapped repository has Vitest configured
-and not installed, so the test gate reports `UNAVAILABLE` with the reason
-and the fix. The repository context panel says the same thing before you
-start rather than after.
+Installing reaches the network and runs whatever `postinstall` scripts
+the packages carry, which is a different class of act from anything else
+here. The approval it requires is the button: nothing installs on its
+own, during a task, or as part of bootstrapping. A person presses it,
+each time, and the page says what it is about to do before they do.
+
+The flag is the second lock, for a machine where that should not be
+possible at all. Set it `False` and the button is gone; the test gate
+then reports `UNAVAILABLE` with the reason and the manual fix.
+
+It runs `npm ci` when a lock file is present and `npm install` otherwise,
+and nothing else: two subcommands, no arguments from anywhere, no shell.
+npm ships as a `.cmd` shim on Windows and running one of those without a
+shell has a history of argument-escaping problems, so node runs npm's own
+`npm-cli.js` directly — the same reason the test gate drives `vitest.mjs`
+rather than `npx`.
 
 ### The settings that actually matter
 

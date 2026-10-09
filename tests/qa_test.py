@@ -158,9 +158,50 @@ for source, expected in (
         expected,
     )
 
+# A relative path between two known paths is arithmetic.
+# Asked for it in prose, a 3B model wrote './clock' for a
+# suite in tests/ importing src/clock.ts, and all eight
+# suites in that run failed to resolve.
+for test_file, source_file, expected in (
+    ("tests/clock.test.ts", "src/clock.ts", "../src/clock"),
+    (
+        "tests/thing.test.ts",
+        "src/deep/nested/thing.ts",
+        "../src/deep/nested/thing",
+    ),
+    ("tests/a.test.ts", "src/a.tsx", "../src/a"),
+    ("tests/b.test.ts", "b.ts", "../b"),
+):
+    check(
+        f"{test_file} imports {source_file} as {expected}",
+        QAAgent.import_specifier(test_file, source_file),
+        expected,
+    )
+
 llm = FakeLLM()
 
 tests = qa(llm).execute(SOURCES)
+
+check(
+    "the prompt spells the import out rather than asking",
+    "from '../src/dispatcher';" in llm.prompts[0],
+    True,
+)
+
+check(
+    "and says not to change it",
+    "do not change" in llm.prompts[0],
+    True,
+)
+
+# A suite written in Jest idiom does not fail an
+# assertion, it fails to run: "jest is not defined",
+# three tests lost from one file.
+check(
+    "the runner is named, because the model assumes Jest",
+    "not Jest" in llm.prompts[0],
+    True,
+)
 
 check(
     "one call per file worth testing",

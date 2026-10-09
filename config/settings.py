@@ -65,14 +65,19 @@ class Settings:
     # the scaffolding is managed elsewhere.
     AUTO_BOOTSTRAP = True
 
-    # Running `npm install` would make the test gate work
-    # on a fresh repository -- and it reaches the network
-    # and runs whatever postinstall scripts the packages
-    # carry. That is a different kind of act from
-    # anything else here, so it is a deliberate switch and
-    # not a side effect of bootstrapping. Off: the gate
-    # reports why it could not run instead.
-    ENABLE_PACKAGE_INSTALLATION = False
+    # Whether the "Run npm install" button exists.
+    #
+    # Installing reaches the network and runs whatever
+    # postinstall scripts the packages carry, which is a
+    # different kind of act from anything else here. The
+    # approval it requires is the button: nothing installs
+    # on its own, during a task, or as part of
+    # bootstrapping -- a person presses it, each time.
+    #
+    # The flag is the second lock, for a machine where
+    # that should not be possible at all. Set it False and
+    # the button is gone.
+    ENABLE_PACKAGE_INSTALLATION = True
 
     # Ask for the file list first, then write each file in
     # its own call. One call for the whole set makes the

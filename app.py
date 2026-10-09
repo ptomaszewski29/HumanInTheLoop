@@ -33,6 +33,7 @@ from models.test_result import TestStatus
 from services.file_writer import FileWriter
 from services.git_diff_service import GitDiffService
 from services.git_service import GitError, GitService
+from services.package_installer import blocked, install
 from services.repository_context import describe
 from workflows.workflow_orchestrator import (
     WorkflowOrchestrator,
@@ -71,6 +72,9 @@ if "requirement" not in st.session_state:
 
 if "issues" not in st.session_state:
     st.session_state.issues = None
+
+if "install_output" not in st.session_state:
+    st.session_state.install_output = ""
 
 repositories = repository_store.get_all()
 
@@ -244,6 +248,66 @@ def execute_planned(plan, item, target_path, started=""):
     return generated, ""
 
 
+def install_panel(path: str) -> None:
+    """The one button that reaches the network.
+
+    Everything else here either writes a file or talks to
+    a remote this platform already had a token for.
+    Installing packages fetches code and runs whatever
+    postinstall scripts it carries, so the button says so
+    rather than reading like a convenience.
+    """
+
+    refusal = blocked(path)
+
+    if refusal and not Settings.ENABLE_PACKAGE_INSTALLATION:
+
+        st.caption(
+            "📦 `npm install` is switched off. Set "
+            "`ENABLE_PACKAGE_INSTALLATION = True` in "
+            "config/settings.py to enable the button."
+        )
+
+        return
+
+    if refusal:
+
+        st.caption(f"📦 Cannot install: {refusal}")
+
+        return
+
+    st.caption(
+        "📦 This downloads packages and runs their "
+        "install scripts. Nothing else in this platform "
+        "does that."
+    )
+
+    if st.button(
+        "📦 Run npm install",
+        key=f"install-{path}",
+    ):
+
+        with st.spinner("📦 npm install ..."):
+            result = install(path)
+
+        st.session_state.install_output = result.output
+
+        st.session_state.git_message = (
+            "success" if result.succeeded else "warning",
+            result.message,
+        )
+
+        st.rerun()
+
+    if st.session_state.get("install_output"):
+
+        with st.expander("📦 npm output"):
+            st.code(
+                st.session_state.install_output,
+                language="text",
+            )
+
+
 def repository_label(task_like) -> str:
 
     found = resolve_repository(task_like)
@@ -380,9 +444,10 @@ with st.sidebar:
                     st.warning(
                         "Vitest is configured but not "
                         "installed, so the test gate "
-                        "cannot run. Run `npm install` in "
-                        "this folder."
+                        "cannot run."
                     )
+
+                    install_panel(active_repository.path)
 
                 elif context.test_framework not in (
                     TestFramework.NONE,
@@ -832,20 +897,23 @@ if st.session_state.plan:
             )
 
         if not environment.tests_runnable:
+
             st.warning(
                 "The test gate cannot run here, so every "
                 "task in this plan will report "
                 "UNAVAILABLE rather than passing or "
                 "failing. "
                 + (
-                    "Run `npm install` in "
-                    f"{target_path}."
+                    "Dependencies are not installed."
                     if environment.test_framework.supported
                     else "This project is not set up for "
                     "Vitest, which is the only runner "
                     "this platform drives."
                 )
             )
+
+            if environment.test_framework.supported:
+                install_panel(target_path)
 
     # A run-all does one task per script run, so the page
     # repaints between tasks instead of freezing until the

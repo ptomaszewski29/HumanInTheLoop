@@ -78,6 +78,16 @@ findings must survive — including ones that use the same words, like
 Then the policy: a structural finding outranks the model entirely, even an
 explicit `REJECT`.
 
+### `tests.install_test`
+
+npm is never run here — the subprocess is faked, so nothing is
+downloaded. The switch is checked first and the reason names it; a folder
+with no `package.json` has nothing to install. What runs is node against
+npm's own CLI with one of two subcommands and two quiet flags, never a
+shell, always in the repository and always with a timeout. A lock file
+means `ci`. A non-zero exit, a hang and a command that cannot start are
+three different reports, and npm's own output is kept and bounded.
+
 ### `tests.governance_test`
 
 The safe pull request workflow, asserted rather than described. Every git

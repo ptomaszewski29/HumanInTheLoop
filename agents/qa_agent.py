@@ -1,3 +1,5 @@
+import posixpath
+
 from config.settings import Settings
 from models.file_type import FileType
 from models.generated_file import GeneratedFile
@@ -58,6 +60,35 @@ class QAAgent:
             if not item.path.endswith(NOT_WORTH_TESTING)
             and item.content.strip()
         ]
+
+    @staticmethod
+    def import_specifier(
+        test_path: str,
+        source_path: str,
+    ) -> str:
+        """What the suite must import, spelled out.
+
+        The relative path between two known paths is
+        arithmetic, and the prompt used to ask for it.
+        A 3B model answered './clock' for a suite in
+        tests/ importing src/clock.ts, and every generated
+        suite failed to resolve -- eight of them in one
+        run, found the first time the test gate could
+        actually run.
+        """
+
+        target = posixpath.splitext(source_path)[0]
+
+        specifier = posixpath.relpath(
+            target,
+            posixpath.dirname(test_path) or ".",
+        ).replace("\\", "/")
+
+        return (
+            specifier
+            if specifier.startswith(".")
+            else f"./{specifier}"
+        )
 
     @staticmethod
     def test_path(source_path: str) -> str:
@@ -131,6 +162,11 @@ class QAAgent:
     ) -> str:
         """One source file's suite, or '' if the call failed."""
 
+        specifier = self.import_specifier(
+            path,
+            source.path,
+        )
+
         prompt = f"""
 You are a QA Engineer.
 
@@ -147,10 +183,18 @@ That file:
 Rules:
 
 - the suite goes in {path}
-- import what you test from {source.path},
-  as a relative path from {path}
+- import exactly like this, and do not change
+  the path:
+
+    import {{ ... }} from '{specifier}';
+
 - at most 3 tests
 - use describe, it and expect
+- this is Vitest, not Jest. For a mock write
+  vi.fn(), and for a mocked type use
+  ReturnType<typeof vi.fn>. The name `jest` does
+  not exist here and a suite using it fails to
+  run at all
 - test what this file does, not what it imports
 - do not invent exports it does not have
 
@@ -199,6 +243,7 @@ Rules:
 - a test file for src/x/y.ts goes in tests/y.test.ts
 - at most 3 tests per file
 - use describe, it and expect
+- this is Vitest, not Jest: mocks are vi.fn()
 - import from the matching source file
 
 Return only JSON in exactly this shape:
