@@ -156,9 +156,22 @@ depended on it still blocked. **🔁 Uruchom ponownie** retries one.
 
 ### 4. Describe a task
 
-Write what you want and press **Generuj kod**. On a local 8B model a run
-takes roughly 5–12 minutes, depending on how many review rounds the
-Architect asks for.
+Write what you want and press **Generuj kod**.
+
+The Developer asks for the file list first, then writes each file in its
+own call. That is what gets you real code instead of stubs — a file goes
+from about 11 lines to about 50 — and it is why a run takes a while: each
+file is its own round trip. On a local 8B model, budget a couple of minutes
+per file plus the review rounds, so **25–45 minutes** for a task that
+produces a dozen files.
+
+If that is too slow, `GENERATE_FILE_BY_FILE = False` in
+[config/settings.py](config/settings.py) goes back to one call for the
+whole set: minutes instead of half an hour, and thinner files. The
+measurements behind the trade-off are in
+[docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+
+The page is busy for the whole task — see **Known limitations**.
 
 The loop runs at most `MAX_REVIEW_LOOPS` times. Every round the Architect
 can send the files back to the Developer; it stops as soon as no blocker
@@ -375,3 +388,11 @@ if you add the same folder again.
 **Running a whole plan blocks the UI** while each individual task runs —
 the plan advances a task at a time and repaints in between, but the task
 itself is synchronous, so the page is busy until it ends.
+
+**A task gives no progress while it runs.** Writing a file at a time made
+this worse rather than better: a task is now a dozen calls instead of one,
+and the page shows the same spinner for all of them. The console prints
+`DEVELOPER: writing src/x.ts (3/12)`, so that is where to look meanwhile.
+The plan dashboard already solves this one level up — persist the state,
+draw the page, then do the work — and the same treatment inside a task is
+the obvious next thing to build.

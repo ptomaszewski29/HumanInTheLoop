@@ -84,6 +84,42 @@ matters: a rule that merely looked for a comma would cut
 losing the file. It runs only when strict parsing has already failed, and
 only when it finds more than salvage did.
 
+### One call per file
+
+`GENERATE_FILE_BY_FILE` decides whether a task is one call or many.
+
+Asking for every file in one answer sounds efficient and is not. The model
+has one answer's worth of attention and spends it across however many files
+it decided to write, so each one gets a fraction. Measured on the same
+task, the same model and the same prompt, changing only this:
+
+| | one call | one call per file |
+|---|---|---|
+| median file | 461 chars, ~11 lines | 1580 chars, ~50 lines |
+| placeholder comments | 4 | 1 in 4 files |
+| wall clock, 12 files | ~3.5 min | ~27 min |
+
+Asking the one-call version to try harder does not work and is worth
+knowing: adding "production code, not stubs, 40-120 lines per file" to the
+prompt made the model write *more* files that were *smaller* — the median
+fell from 461 to 142 characters. It splits rather than deepens. The budget
+is the constraint, not the instruction.
+
+So `execute` asks for the file list first — paths and one sentence each —
+and then writes each file in its own call. `MAX_FILES_PER_TASK` bounds how
+long that can take; the planning call pads a list it is given no limit for.
+
+The cost is real and it is wall clock. A twelve-file task takes roughly
+twelve times as long, and the page is busy for all of it. Set
+`GENERATE_FILE_BY_FILE = False` to go back to one call.
+
+A review round works the same way, and for a related reason. Sending the
+whole set back with the review and asking for the whole set returned made
+the round a no-op: measured three times on the same input, the model
+returned the same eleven files with twenty characters changed. It now
+rewrites only the files the review is about — worked out in code by reading
+the paths out of the review text — and leaves the others byte-identical.
+
 ### The settings that actually matter
 
 **`OLLAMA_NUM_PREDICT`** — how many tokens a single answer may use.

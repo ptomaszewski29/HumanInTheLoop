@@ -47,6 +47,23 @@ class Settings:
 
     MAX_REVIEW_LOOPS = 3
 
+    # Ask for the file list first, then write each file in
+    # its own call. One call for the whole set makes the
+    # model spread one answer's worth of tokens across
+    # every file, and it writes stubs: measured against a
+    # single call, a file went from ~11 lines to ~50 and
+    # the placeholder comments stopped.
+    #
+    # The cost is wall clock. Each file is its own round
+    # trip, so a twelve-file task takes roughly as many
+    # minutes. Set this to False to go back to one call.
+    GENERATE_FILE_BY_FILE = True
+
+    # How many files one task may produce. Bounds the run
+    # time above, and the planning call tends to pad a list
+    # it is not given a limit for.
+    MAX_FILES_PER_TASK = 12
+
     # =====================
     # TEST EXECUTION
     # =====================

@@ -66,17 +66,30 @@ Does not own: anything about the code that task produces.
 
 ### DeveloperAgent — `agents/developer_agent.py`
 
-Writes the source files. Returns a JSON file set, not a blob, so a task
-produces the files a real project would have.
+Writes the source files, one call per file.
 
-`execute` writes from scratch; `improve` receives the current files and the
-review, and returns the complete set again.
+`execute` asks for the file list first — paths and one sentence each, no
+code — and then writes each file in its own call, giving the model the
+whole list as context so imports line up. `improve` does not regenerate
+everything: it works out which files the review is about and rewrites only
+those, leaving the rest byte-identical.
 
-When the JSON is unusable it falls back to a single file rather than
-failing the run, because a model that ignores the format still produces
-usable code.
+Why it is shaped that way is in [CONFIGURATION.md](CONFIGURATION.md) under
+**One call per file**: asking for every file in one answer made the model
+spread one answer's worth of tokens across all of them and write stubs.
+
+Both fall back to the single-call file set — `Settings.GENERATE_FILE_BY_FILE
+= False` does the same deliberately — and that in turn falls back to one
+file when the JSON is unusable, because a model that ignores the format
+still produces usable code.
+
+A file that cannot be written is skipped and reported rather than failing
+the task; the Architect sees a missing file on the next round and says so.
+Every file failing does raise, because that is not a partial result.
 
 Owns: the content of the files.
+Does not own: which files a review is about — that is read out of the
+review text by `FileParser.paths_in`, not asked of the model.
 
 ### ArchitectAgent — `agents/architect_agent.py`
 

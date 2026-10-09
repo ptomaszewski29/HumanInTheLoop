@@ -78,6 +78,23 @@ findings must survive — including ones that use the same words, like
 Then the policy: a structural finding outranks the model entirely, even an
 explicit `REJECT`.
 
+### `tests.developer_test`
+
+How a task becomes files, with the model faked. A plan, then one call per
+file, each call carrying the whole plan. One file failing is skipped and
+the rest survive; every file failing raises rather than returning nothing.
+An unusable plan falls back to the single-call set. A review round rewrites
+only the files the review names, adds the ones it says are missing, and
+leaves the rest byte-identical — including the case where the review names
+no file at all.
+
+Paths are read out of review prose rather than asked for, so that has its
+own checks: prose is not mistaken for a path, a bare file name is not one,
+and `../../etc/evil.ts` yields nothing. That last one is not hypothetical —
+the first version of the pattern started matching after the `../` and
+reported `etc/evil.ts`, which is the same path laundering the file writer
+already refuses to do.
+
 ### `tests.file_generation_test`
 
 A model's JSON becomes files, through fences and surrounding prose. Unsafe

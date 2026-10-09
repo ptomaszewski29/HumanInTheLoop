@@ -53,6 +53,7 @@ What has been built, in the order it was built, and what the next step is.
 | 9.1 | **Requirements workspace** — one place where work is described, and the planner's only input |
 | 9.5 | **Execution layer** — every attempt is recorded, failures survive a restart, and a plan reports where it stands |
 | 9.5B.1 | **Live progress** — a run-all advances one task per script run, so the dashboard, the log and failures appear while the plan runs |
+| — | **One call per file** — the Developer plans the file list, then writes each file in its own call; a review round rewrites only what it names |
 | 10 | **GitHub issues** — a backlog becomes requirements, and a pull request reports back to the issue it came from |
 
 ---
@@ -84,6 +85,15 @@ this, a task that blew up simply reappeared as ready: the UI could not tell
 "never tried" from "tried and broke". Deriving `READY`/`PENDING` is right,
 because the graph knows them; deriving `FAILED` is impossible, because only
 the run knows. Store the attempt, derive the rest.
+
+**One call per file** — "how much code comes out" turned out to be three
+separate problems wearing one coat. A parser that lost a file to an unescaped
+quote and said nothing. A review round that returned its input with twenty
+characters changed. And a single call asked to write twelve files, which
+spends one answer's attention across all of them and writes stubs. Only
+the first was a bug; the second and third were the shape of the pipeline.
+Telling the model to try harder made it worse — more files, smaller each.
+Budget beats instruction.
 
 **9.5B.1** — storing a status is not the same as showing one. `RUNNING` was
 already written to SQLite before this sprint, and still nobody ever saw it:

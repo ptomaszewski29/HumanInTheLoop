@@ -34,6 +34,20 @@ CLOSES_ENTRY = re.compile(r'\s*\}\s*(?:,\s*\{|\]|$)')
 # quoted name, then a colon.
 NEXT_KEY = re.compile(r'\s*,\s*"[A-Za-z_][\w-]*"\s*:')
 
+# A path as it appears in a review: at least one folder, a
+# file name, a known source extension.
+#
+# The lookbehind is the point. Without it the scan happily
+# starts in the middle of ../../etc/evil.ts and reports
+# etc/evil.ts -- a path that looks safe because the part
+# that made it dangerous was left behind. Review text comes
+# from the model, so it is not a place to be relaxed about
+# this.
+PATH_IN_TEXT = re.compile(
+    r"(?<![\w./\\-])"
+    r"(?:[\w.-]+/)+[\w.-]+\.(?:ts|tsx|js|jsx|mts|cts)\b"
+)
+
 
 class FileParseError(ValueError):
     pass
@@ -356,6 +370,27 @@ class FileParser:
             CLOSES_ENTRY.match(text, quote + 1)
             or NEXT_KEY.match(text, quote + 1)
         )
+
+    @staticmethod
+    def paths_in(text: str) -> list[str]:
+        """Repository paths mentioned in prose, in order.
+
+        Used to work out which files a review is about
+        without asking the model which files its own review
+        was about. Only paths that would be safe to write
+        are returned, and each appears once.
+        """
+
+        found: list[str] = []
+
+        for match in PATH_IN_TEXT.finditer(text):
+
+            path = FileParser.safe_path(match.group(0))
+
+            if path and path not in found:
+                found.append(path)
+
+        return found
 
     @staticmethod
     def safe_path(path: str) -> str | None:
