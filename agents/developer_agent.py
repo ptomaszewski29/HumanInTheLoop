@@ -5,6 +5,7 @@ from services.code_cleaner import strip_code_fences
 from services.file_bundle import FileBundle
 from services.file_naming import FileNaming
 from services.file_parser import FileParseError, FileParser
+from services.import_repair import drop_self_imports
 from services.llm_factory import LLMFactory
 
 # The paths in these examples are deliberately not names
@@ -293,6 +294,8 @@ One file is a perfectly good answer. At most
                 "did not come back: " + ", ".join(missing)
             )
 
+        files = self._settle(files)
+
         self._announce(files)
 
         return files
@@ -558,9 +561,11 @@ Its job: {purpose}
             and path in by_path
         ]
 
-        self._announce(kept + added)
+        settled = self._settle(kept + added)
 
-        return kept + added
+        self._announce(settled)
+
+        return settled
 
     # ------------------------------------------------
     # one call for everything
@@ -598,9 +603,31 @@ provider or component per file.
         except (FileParseError, ValueError) as error:
             files = self._single_file(raw, task, error)
 
+        files = self._settle(files)
+
         self._announce(files)
 
         return files
+
+    @staticmethod
+    def _settle(
+        files: list[GeneratedFile],
+    ) -> list[GeneratedFile]:
+        """The last mechanical pass before the files leave.
+
+        A file importing itself is the one cycle with no
+        design question in it, so it is cut here rather
+        than described to the model -- which was asked to
+        fix exactly that for two rounds running and did
+        not.
+        """
+
+        repaired, notes = drop_self_imports(files)
+
+        for note in notes:
+            print(f"DEVELOPER: {note}")
+
+        return repaired
 
     @staticmethod
     def _announce(files: list[GeneratedFile]) -> None:

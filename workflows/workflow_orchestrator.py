@@ -208,6 +208,20 @@ class WorkflowOrchestrator:
                 "compiler-style pass:\n" + lines
             )
 
+        # A cycle told as prose went unfixed for three
+        # rounds running: the developer rewrites one file
+        # at a time and cannot see which import closes the
+        # loop. The validator can, so it says which one to
+        # remove instead of describing the route.
+        cuts = review.structure_report.cuts()
+
+        if cuts:
+
+            parts.append(
+                "Do exactly this to break the cycles:\n"
+                + "\n".join(f"- {cut}" for cut in cuts)
+            )
+
         if review.review:
             parts.append(review.review)
 

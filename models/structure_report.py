@@ -15,6 +15,13 @@ class StructureReport:
 
     cycles: list[str] = field(default_factory=list)
 
+    # The same cycles as the files they run through, which
+    # is what turns "there is a cycle" into "remove this
+    # import".
+    cycle_paths: list[list[str]] = field(
+        default_factory=list
+    )
+
     uncovered_requirements: list[str] = field(
         default_factory=list
     )
@@ -29,6 +36,39 @@ class StructureReport:
             *self.cycles,
             *self.uncovered_requirements,
         ]
+
+    def cuts(self) -> list[str]:
+        """One import to remove per cycle, named outright.
+
+        Any single edge breaks a cycle, so which one is a
+        choice rather than a deduction. It is always the
+        first edge on the reported path: a rule, so that
+        the same cycle produces the same instruction every
+        round and the developer is not sent to cut a
+        different edge each time.
+        """
+
+        instructions: list[str] = []
+
+        for loop in self.cycle_paths:
+
+            if len(loop) < 2:
+                continue
+
+            importer, imported = loop[0], loop[1]
+
+            instruction = (
+                f"In {importer}, remove the import of "
+                f"{imported}. That import closes a "
+                "dependency cycle. If something is needed "
+                "from it, move that into a third file and "
+                "import it from both."
+            )
+
+            if instruction not in instructions:
+                instructions.append(instruction)
+
+        return instructions
 
     def summary(self) -> str:
 

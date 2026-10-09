@@ -78,6 +78,13 @@ findings must survive — including ones that use the same words, like
 Then the policy: a structural finding outranks the model entirely, even an
 explicit `REJECT`.
 
+### `tests.qa_test`
+
+A suite per source file, with the model faked. Type declarations, barrels
+and empty files earn no suite; a failed or empty call costs that one suite
+and not the rest; every suite failing falls back to the single call. Each
+call carries the file it is about and only a listing of the others.
+
 ### `tests.developer_test`
 
 How a task becomes files, with the model faked. A plan, then one call per
@@ -106,6 +113,13 @@ A model's JSON becomes files, through fences and surrounding prose. Unsafe
 paths are rejected rather than rewritten. A truncated answer keeps the
 entries it finished. Files are written, folders created, existing files
 overwritten. Rows written before the `CODE` → `source` rename still load.
+
+Cycles have their own set in `tests.structure_test`: the route is kept and
+not just the fact, it becomes one instruction naming the import to remove,
+the same cycle gives the same instruction twice, and a repeated cycle is
+not repeated advice. A file importing itself is cut outright and the cut
+is reported; a two-file cycle is left alone, because which edge to drop is
+a design decision.
 
 Quoting has its own set. An unescaped quote in generated code must not
 cost the file that carries it, and — the harder half — the lenient reader

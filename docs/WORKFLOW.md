@@ -155,6 +155,38 @@ log that was on screen before it:
 
 ---
 
+## Cycles
+
+A circular dependency is a fact, and until recently it was passed to the
+developer as a sentence: *"Circular dependency: A -> B -> A"*. That is
+enough to know something is wrong and not enough to fix it — the developer
+rewrites one file at a time and cannot see which import closes the loop.
+Measured on a real run, the same cycle survived all three review rounds
+while the code churned by a few hundred characters.
+
+Two things changed.
+
+A file importing **itself** is cut in code. It is the only cycle with no
+design question in it — the symbols are already in scope — and it is the
+one a small model writes most often: four of them in a single run. The
+removal is reported rather than silent, because a repair nobody hears
+about hides how often the model needs it.
+
+Every other cycle now arrives as an instruction rather than a description:
+
+```text
+In src/Notification.ts, remove the import of src/deliveryLog.ts.
+That import closes a dependency cycle.
+```
+
+Which edge to cut is a choice, not a deduction — any one of them breaks
+the loop. It is always the first on the reported path, so the same cycle
+yields the same instruction every round and the developer is not sent to
+cut a different edge each time. When several cycles share an edge, they
+collapse to one instruction, and cutting it breaks all of them.
+
+---
+
 ## The review loop
 
 Each round:

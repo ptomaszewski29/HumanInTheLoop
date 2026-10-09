@@ -87,9 +87,15 @@ A file that cannot be written is skipped and reported rather than failing
 the task; the Architect sees a missing file on the next round and says so.
 Every file failing does raise, because that is not a partial result.
 
+Before the files leave the agent, `drop_self_imports` cuts any import a
+file makes of itself — the one cycle with no design question in it, and the
+one a small model writes most often. Every other cycle stays with the
+developer, told which edge to remove.
+
 Owns: the content of the files.
 Does not own: which files a review is about — that is read out of the
-review text by `FileParser.paths_in`, not asked of the model.
+review text by `FileParser.paths_in`, not asked of the model. Nor which
+import closes a cycle: `StructureReport.cuts()` decides that.
 
 ### ArchitectAgent — `agents/architect_agent.py`
 
@@ -201,6 +207,7 @@ its own test.
 | `review_parser` | the Architect's answer into sections |
 | `finding_filter` | drops claims the validator owns, caps review length |
 | `file_parser` | a model's JSON into files, through truncation and bad quoting alike |
+| `import_repair` | cuts an import a file makes of itself, and says so |
 | `file_writer` | writes inside the repository, and nowhere else |
 | `file_naming` | derives repository paths from the generated code |
 | `file_bundle` | renders a file set for prompts and display |

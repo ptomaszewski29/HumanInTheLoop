@@ -23,7 +23,7 @@ Python 3.11 or newer; developed on 3.14.
 The default provider is a local Ollama, not a cloud API.
 
 ```powershell
-ollama pull qwen3
+ollama pull qwen2.5-coder:3b
 ollama serve
 ```
 
@@ -38,9 +38,10 @@ works.
 ```python
 LLM_PROVIDER = LLMProvider.OLLAMA   # or LLMProvider.GEMINI
 
-OLLAMA_MODEL = "qwen3"
+OLLAMA_MODEL = "qwen2.5-coder:3b"
 OLLAMA_URL = "http://localhost:11434/api/generate"
 OLLAMA_NUM_PREDICT = 8192
+OLLAMA_NUM_CTX = 16384
 OLLAMA_TIMEOUT = 600
 OLLAMA_THINKING = False
 

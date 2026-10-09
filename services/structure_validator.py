@@ -439,7 +439,14 @@ class StructureValidator:
                     "declares or imports it"
                 )
 
-        report.cycles = StructureValidator.find_cycles(graph)
+        report.cycle_paths = (
+            StructureValidator.find_cycle_paths(graph)
+        )
+
+        report.cycles = [
+            "Circular dependency: " + " -> ".join(loop)
+            for loop in report.cycle_paths
+        ]
 
         report.uncovered_requirements = (
             StructureValidator.find_uncovered(
@@ -451,11 +458,18 @@ class StructureValidator:
         return report
 
     @staticmethod
-    def find_cycles(
+    def find_cycle_paths(
         graph: dict[str, set[str]],
-    ) -> list[str]:
+    ) -> list[list[str]]:
+        """Each cycle as the files it runs through.
 
-        cycles: list[str] = []
+        The path is what makes a cycle fixable: a sentence
+        saying one exists leaves the developer guessing
+        which import to drop, and three rounds of guessing
+        is what it cost before this returned the route.
+        """
+
+        paths: list[list[str]] = []
 
         seen: set[str] = set()
 
@@ -472,10 +486,7 @@ class StructureValidator:
 
                 seen.add(key)
 
-                cycles.append(
-                    "Circular dependency: "
-                    + " -> ".join(loop)
-                )
+                paths.append(loop)
 
                 return
 
@@ -485,7 +496,19 @@ class StructureValidator:
         for start in sorted(graph):
             walk(start, [])
 
-        return cycles
+        return paths
+
+    @staticmethod
+    def find_cycles(
+        graph: dict[str, set[str]],
+    ) -> list[str]:
+
+        return [
+            "Circular dependency: " + " -> ".join(loop)
+            for loop in StructureValidator.find_cycle_paths(
+                graph
+            )
+        ]
 
     @staticmethod
     def find_uncovered(
