@@ -58,6 +58,12 @@ if "git_message" not in st.session_state:
 if "plan" not in st.session_state:
     st.session_state.plan = None
 
+# The id of the plan a run-all is working through. One task
+# runs per script run, so the page repaints between them;
+# this is the only thing that carries the intent across.
+if "auto_run" not in st.session_state:
+    st.session_state.auto_run = None
+
 if "requirement" not in st.session_state:
     st.session_state.requirement = None
 
@@ -147,25 +153,44 @@ def run_task(
     return generated
 
 
-def execute_planned(plan, item, target_path):
-    """Runs one planned task, recording how it went.
+def mark_running(plan, item) -> str:
+    """Writes RUNNING before any work starts.
 
-    A failure is written down, so re-opening the plan shows
-    what went wrong rather than offering the task again as
-    if nothing had happened.
+    Saved first and only then rendered from, so the page
+    shows the task as running *while* it runs rather than
+    once it is over — and an interrupted run still reads as
+    RUNNING when the app comes back.
     """
+
+    started = now()
 
     plan.record(
         TaskExecution(
             task_id=item.id,
             status=ExecutionStatus.RUNNING,
-            started_at=now(),
+            started_at=started,
         )
     )
 
     plan_store.update_progress(plan)
 
-    started = now()
+    return started
+
+
+def execute_planned(plan, item, target_path, started=""):
+    """Runs one planned task, recording how it went.
+
+    A failure is written down, so re-opening the plan shows
+    what went wrong rather than offering the task again as
+    if nothing had happened.
+
+    'started' is passed when the caller already marked the
+    task as running in an earlier script run, so the time
+    on screen is when the work began, not when this run
+    picked it up again.
+    """
+
+    started = started or mark_running(plan, item)
 
     try:
 
@@ -644,6 +669,49 @@ if st.session_state.plan:
 
     st.caption(plan.epic)
 
+    target_path = (
+        repositories_by_id[
+            st.session_state.repository_id
+        ].path
+        if st.session_state.repository_id
+        else ""
+    )
+
+    # A run-all does one task per script run, so the page
+    # repaints between tasks instead of freezing until the
+    # last one. The task is marked as running and saved
+    # before this page is drawn, so everything below shows
+    # work in progress; the work itself happens at the very
+    # end of the run, and a rerun picks up the next task.
+    pending = None
+
+    started_at = ""
+
+    if st.session_state.auto_run == plan.id:
+
+        pending = plan.next_ready() if target_path else None
+
+        if pending is None:
+
+            st.session_state.auto_run = None
+
+            if plan.remaining and target_path:
+
+                waiting = plan.remaining[0]
+
+                st.session_state.git_message = (
+                    "warning",
+                    f"Zatrzymano przed zadaniem {waiting.id}: czeka na "
+                    + ", ".join(
+                        str(d)
+                        for d in plan.blocked_by(waiting)
+                    ),
+                )
+
+        else:
+
+            started_at = mark_running(plan, pending)
+
     if plan.issues:
 
         st.warning(
@@ -701,7 +769,8 @@ if st.session_state.plan:
         board_3,
         board_4,
         board_5,
-    ) = st.columns(5)
+        board_6,
+    ) = st.columns(6)
 
     with board_1:
         st.metric("Total", counts["TOTAL"])
@@ -710,21 +779,57 @@ if st.session_state.plan:
         st.metric("Completed", counts["COMPLETED"])
 
     with board_3:
-        st.metric("Ready", counts["READY"])
+        st.metric("Running", counts["RUNNING"])
 
     with board_4:
-        st.metric("Blocked", counts["PENDING"])
+        st.metric("Ready", counts["READY"])
 
     with board_5:
+        st.metric("Blocked", counts["PENDING"])
+
+    with board_6:
         st.metric("Failed", counts["FAILED"])
 
-    target_path = (
-        repositories_by_id[
-            st.session_state.repository_id
-        ].path
-        if st.session_state.repository_id
-        else ""
-    )
+    current = plan.running
+
+    if current is not None:
+
+        st.info(
+            f"⏳ **Wykonywane teraz — zadanie {current.id}:** "
+            f"{current.title}"
+        )
+
+    entries = plan.log()
+
+    if entries:
+
+        with st.expander(
+            f"🪵 Dziennik wykonania ({len(entries)})",
+            expanded=current is not None,
+        ):
+
+            words = {
+                "STARTED": ("▶️", "Rozpoczęto"),
+                "COMPLETED": ("✅", "Ukończono"),
+                "FAILED": ("❌", "Nie powiodło się"),
+                "RUNNING": ("⏳", "Uruchomiono"),
+            }
+
+            for entry in entries:
+
+                icon, verb = words.get(
+                    entry.event, ("•", entry.event)
+                )
+
+                st.write(
+                    f"`{entry.at[11:19]}` {icon} {verb} — "
+                    f"zadanie {entry.task_id}: {entry.title}"
+                    + (
+                        f" · {entry.detail}"
+                        if entry.detail
+                        else ""
+                    )
+                )
 
     marks = {
         ExecutionStatus.COMPLETED: "✅",
@@ -812,7 +917,8 @@ if st.session_state.plan:
                     else "▶️ Uruchom to zadanie",
                     key=f"run-{plan.id}-{item.id}",
                     disabled=bool(blocked)
-                    or not target_path,
+                    or not target_path
+                    or pending is not None,
                 ):
 
                     with st.spinner(
@@ -852,61 +958,73 @@ if st.session_state.plan:
 
     with run_all:
 
-        if st.button(
+        if pending is not None:
+
+            # Pressed while a task is running: the click is
+            # handled on the next script run, which is the
+            # one that would have started the task after
+            # this one.
+            if st.button(
+                "⏹ Zatrzymaj po tym zadaniu",
+                use_container_width=True,
+            ):
+                st.session_state.auto_run = None
+
+        elif st.button(
             f"⏩ Uruchom cały plan ({len(plan.remaining)})",
             disabled=not ready or not target_path,
+            use_container_width=True,
         ):
 
-            # Tasks are already in dependency order, and a
-            # failure stops the run: everything after it
-            # would be building on work that is not there.
-            for item in list(plan.remaining):
-
-                if not plan.is_ready(item):
-
-                    st.session_state.git_message = (
-                        "warning",
-                        f"Zatrzymano przed zadaniem {item.id}: czeka na "
-                        + ", ".join(
-                            str(d)
-                            for d in plan.blocked_by(item)
-                        ),
-                    )
-
-                    break
-
-                with st.spinner(
-                    f"🤖 {item.id}. {item.title} ..."
-                ):
-
-                    generated, problem = execute_planned(
-                        plan,
-                        item,
-                        target_path,
-                    )
-
-                if problem:
-
-                    st.session_state.git_message = (
-                        "warning",
-                        (
-                            f"Zatrzymano na zadaniu {item.id}: {problem}"
-                        ),
-                    )
-
-                    break
-
-                st.session_state.task = generated
+            st.session_state.auto_run = plan.id
 
             st.rerun()
 
     with clear:
 
-        if st.button("🗑 Zamknij plan"):
+        if st.button(
+            "🗑 Zamknij plan",
+            use_container_width=True,
+        ):
 
             st.session_state.plan = None
 
+            st.session_state.auto_run = None
+
             st.rerun()
+
+    # Last, deliberately: everything above is on screen
+    # before the work starts, so the run is watched rather
+    # than waited out. The rerun that follows brings the
+    # next task, with the dashboard and the log already
+    # reflecting this one.
+    if pending is not None:
+
+        with st.spinner(
+            f"🤖 {pending.id}. {pending.title} ..."
+        ):
+
+            generated, problem = execute_planned(
+                plan,
+                pending,
+                target_path,
+                started_at,
+            )
+
+        if problem:
+
+            st.session_state.auto_run = None
+
+            st.session_state.git_message = (
+                "warning",
+                f"Zatrzymano na zadaniu {pending.id}: {problem}",
+            )
+
+        else:
+
+            st.session_state.task = generated
+
+        st.rerun()
 
     st.divider()
 

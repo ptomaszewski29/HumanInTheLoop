@@ -138,12 +138,17 @@ Run them one at a time, or **⏩ Uruchom cały plan** to walk the whole plan in
 dependency order, which stops at the first failure.
 
 A dashboard above the plan counts where it stands — total, completed,
-ready, blocked, failed — and every task carries a status:
+running, ready, blocked, failed — and every task carries a status:
 
 | | | |
 |---|---|---|
 | ▶️ `READY` | ⛔ `PENDING` | ⏳ `RUNNING` |
 | ✅ `COMPLETED` | ❌ `FAILED` | |
+
+The run advances one task at a time, repainting between them, so the
+progress bar, the dashboard, the **Execution log** and the banner naming
+the task being worked on all move while the plan runs. A failure shows the
+moment it happens.
 
 Attempts are saved, not just successes. Close the app after a task fails
 and it is still failed when you return, with the reason, and the tasks that
@@ -360,4 +365,6 @@ well it does that varies.
 **Deleting a repository does not delete its tasks.** They reconnect by path
 if you add the same folder again.
 
-**Running a whole plan blocks the UI** until every task finishes.
+**Running a whole plan blocks the UI** while each individual task runs —
+the plan advances a task at a time and repaints in between, but the task
+itself is synchronous, so the page is busy until it ends.

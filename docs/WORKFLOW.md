@@ -113,13 +113,45 @@ record rather than adding a second one, so the dashboard above the plan
 always counts each task once:
 
 ```text
-Total   Completed   Ready   Blocked   Failed
-  7         3          1       2         1
+Total   Completed   Running   Ready   Blocked   Failed
+  7         3           1       1        1         1
 ```
 
 A run interrupted part-way — the browser closed, the process killed —
 reads as `RUNNING` when you come back, which is honest: nobody knows
 whether it finished. It too offers **Run again**.
+
+### Watching a run happen
+
+**Run entire plan** does **one task per script run**, not all of them in a
+single pass. The sequence for each task is:
+
+1. The task is marked `RUNNING` and written to SQLite.
+2. The page is drawn from what is now stored — the banner, the dashboard,
+   the progress bar and the log all show the task as running.
+3. Only then does the work start.
+4. When it ends, the outcome is written and the page reruns, which picks up
+   the next task.
+
+The order matters. Persisting before drawing is what makes a run watchable:
+the dashboard moves while the plan is running instead of jumping from 0 to
+11 at the end, and a failure appears the moment it happens rather than when
+the last task gives up.
+
+While a run is in flight the per-task buttons are disabled and the run-all
+button becomes **Stop after this task** — the click lands on the next
+script run, which is the one that would have started the following task.
+
+The **Execution log** is built from the stored executions rather than
+appended to as the run goes, so the log you see after a restart is the same
+log that was on screen before it:
+
+```text
+09:30 ▶️  Started    — task 1: Create the interface
+09:32 ✅  Completed  — task 1: Create the interface
+09:32 ▶️  Started    — task 2: Create the provider
+09:35 ❌  Failed     — task 2: Create the provider · no files returned
+```
 
 ---
 

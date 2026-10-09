@@ -6,6 +6,7 @@ from models.github_issue import IssueLink
 from models.task_breakdown import TaskBreakdown
 from models.task_execution import (
     ExecutionStatus,
+    LogEntry,
     TaskExecution,
 )
 
@@ -127,6 +128,80 @@ class Plan:
         counts["TOTAL"] = len(self.tasks)
 
         return counts
+
+    @property
+    def running(self) -> TaskBreakdown | None:
+        """The task being worked on, if any.
+
+        Read from the stored record, so it is right after a
+        rerun and after a restart alike.
+        """
+
+        for item in self.tasks:
+
+            execution = self.execution(item.id)
+
+            if (
+                execution is not None
+                and execution.status
+                == ExecutionStatus.RUNNING
+            ):
+                return item
+
+        return None
+
+    def next_ready(self) -> TaskBreakdown | None:
+        """The next task a run-all should pick up.
+
+        Tasks are already in dependency order, so the first
+        unfinished one whose dependencies are done is it.
+        """
+
+        for item in self.remaining:
+
+            if self.is_ready(item):
+                return item
+
+        return None
+
+    def log(self) -> list[LogEntry]:
+        """Every start and finish, oldest first."""
+
+        entries: list[LogEntry] = []
+
+        for execution in self.executions:
+
+            item = self.task(execution.task_id)
+
+            title = item.title if item else ""
+
+            if execution.started_at:
+
+                entries.append(
+                    LogEntry(
+                        at=execution.started_at,
+                        event="STARTED",
+                        task_id=execution.task_id,
+                        title=title,
+                    )
+                )
+
+            if execution.completed_at:
+
+                entries.append(
+                    LogEntry(
+                        at=execution.completed_at,
+                        event=execution.status.value,
+                        task_id=execution.task_id,
+                        title=title,
+                        detail=execution.error,
+                    )
+                )
+
+        return sorted(
+            entries,
+            key=lambda entry: (entry.at, entry.event),
+        )
 
     @property
     def percent_complete(self) -> float:

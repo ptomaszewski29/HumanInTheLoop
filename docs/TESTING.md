@@ -28,6 +28,18 @@ came after, retrying replaces the record rather than adding a second, and
 the dashboard counts agree with the statuses. A plan written before
 executions existed still reports its progress after the migration.
 
+Live progress is covered by what the database held *during* a run: the fake
+agent reads the plan back from SQLite each time it is called, which shows
+task 1 stored as `RUNNING` while it ran and as `COMPLETED` before task 2
+began. That is the property the UI depends on, and it cannot be faked by
+checking the plan afterwards.
+
+One thing is not covered here: the **Stop after this task** button and the
+disabled per-task buttons are rendered only while a task is in flight, and
+Streamlit's `AppTest` follows every `st.rerun()` to completion, so no
+mid-run frame exists to assert against. A failure mid-plan exercises the
+same one-task-at-a-time path and is checked instead.
+
 ### `tests.issue_test`
 
 Issues are read without pull requests mixed in, commented on and relabelled.

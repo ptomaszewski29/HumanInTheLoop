@@ -56,6 +56,11 @@ model finished rather than being discarded.
 Execution is tracked per task — see `models/task_execution.py`. The planner
 decides what *may* run; the plan records what *did*.
 
+`Plan.next_ready()` is what a run-all asks between tasks, and `Plan.log()`
+and `Plan.running` are what the page draws from. All three read the stored
+executions, so a run that is watched and a run that is reopened after a
+restart show the same thing.
+
 Owns: what a task *is*.
 Does not own: anything about the code that task produces.
 

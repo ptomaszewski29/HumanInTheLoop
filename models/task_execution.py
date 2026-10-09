@@ -30,6 +30,26 @@ class ExecutionStatus(str, Enum):
 
 
 @dataclass
+class LogEntry:
+    """One line of what happened, and when.
+
+    Built from the stored executions rather than appended
+    to as the run goes, so the log a restart shows is the
+    same log that was on screen before it.
+    """
+
+    at: str = ""
+
+    event: str = ""
+
+    task_id: int = 0
+
+    title: str = ""
+
+    detail: str = ""
+
+
+@dataclass
 class TaskExecution:
     """What happened when a planned task was run.
 

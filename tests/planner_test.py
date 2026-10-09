@@ -583,6 +583,152 @@ check(
 
 print()
 print("=" * 80)
+print("A RUN IS WATCHABLE WHILE IT HAPPENS")
+print("=" * 80)
+
+live = PlannerAgent().execute("Epic.")
+
+check(
+    "nothing is running yet",
+    live.running,
+    None,
+)
+
+check(
+    "the first task is the one to pick up",
+    live.next_ready().id,
+    1,
+)
+
+check("and the log is empty", live.log(), [])
+
+live.record(
+    TaskExecution(
+        task_id=1,
+        status=ExecutionStatus.RUNNING,
+        started_at="2026-10-09T09:30:00+00:00",
+    )
+)
+
+check(
+    "a running task names itself",
+    live.running.id,
+    1,
+)
+
+check(
+    "and the dashboard counts it",
+    live.dashboard()["RUNNING"],
+    1,
+)
+
+check(
+    "the log opens with the start",
+    [
+        (entry.event, entry.task_id)
+        for entry in live.log()
+    ],
+    [("STARTED", 1)],
+)
+
+live.record(
+    TaskExecution(
+        task_id=1,
+        status=ExecutionStatus.COMPLETED,
+        started_at="2026-10-09T09:30:00+00:00",
+        completed_at="2026-10-09T09:32:00+00:00",
+    )
+)
+
+check(
+    "nothing is running once it finishes",
+    live.running,
+    None,
+)
+
+check(
+    "the next task is picked up",
+    live.next_ready().id,
+    2,
+)
+
+live.record(
+    TaskExecution(
+        task_id=2,
+        status=ExecutionStatus.FAILED,
+        started_at="2026-10-09T09:32:00+00:00",
+        completed_at="2026-10-09T09:35:00+00:00",
+        error="boom",
+    )
+)
+
+check(
+    "the log reads in order",
+    [
+        (entry.at[11:19], entry.event, entry.task_id)
+        for entry in live.log()
+    ],
+    [
+        ("09:30:00", "STARTED", 1),
+        ("09:32:00", "COMPLETED", 1),
+        ("09:32:00", "STARTED", 2),
+        ("09:35:00", "FAILED", 2),
+    ],
+)
+
+check(
+    "a failure carries its reason into the log",
+    live.log()[-1].detail,
+    "boom",
+)
+
+check(
+    "and its title",
+    live.log()[-1].title,
+    live.task(2).title,
+)
+
+check(
+    "a failed task is offered again",
+    live.next_ready().id,
+    2,
+)
+
+check(
+    "nothing is ready once the rest is blocked",
+    Plan(
+        tasks=[
+            TaskBreakdown(1, "a", "", Priority.HIGH),
+            TaskBreakdown(
+                2, "b", "", Priority.HIGH, [1]
+            ),
+        ],
+        executions=[
+            TaskExecution(
+                task_id=1,
+                status=ExecutionStatus.FAILED,
+            )
+        ],
+    ).next_ready().id,
+    1,
+)
+
+check(
+    "a finished plan has nothing to pick up",
+    Plan(
+        tasks=[TaskBreakdown(1, "a", "", Priority.HIGH)],
+        executions=[
+            TaskExecution(
+                task_id=1,
+                status=ExecutionStatus.COMPLETED,
+            )
+        ],
+    ).next_ready(),
+    None,
+)
+
+print()
+print("=" * 80)
 print("A PLAN SURVIVES A RESTART")
 print("=" * 80)
 
