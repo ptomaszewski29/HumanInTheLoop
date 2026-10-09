@@ -55,6 +55,35 @@ MAX_REVIEW_LOOPS = 3
 PAGE_TITLE = "👑 Human In The Loop"
 ```
 
+### Why a file goes missing
+
+A file that the model wrote and that never reached the repository is the
+failure mode worth understanding, because nothing announces it.
+
+The model returns one JSON object holding every file. Its `content`
+strings are TypeScript, and TypeScript contains quotes. A model that
+writes `const s = "hi";` without escaping those quotes has, as far as a
+strict scanner is concerned, ended the string early — and every brace
+after that point is counted in the wrong place. The answer is then
+declared truncated when it is complete, and the entry carrying the quote
+does not survive.
+
+Measured on three real answers: the model emitted 12, 2 and 14 files, and
+11, 2 and 13 arrived. The file lost from the first was
+`src/sms.provider.ts`, from a task that asked in as many words for email,
+SMS and push providers.
+
+The parser therefore has a third pass. Strict JSON first; then the
+balanced-object salvage for genuinely truncated answers; then a reader
+that does not trust the quoting at all. That last one anchors on the
+`"path"` and `"content"` keys and decides where a value ends by what
+follows the quote — a closing brace and then the next entry, or a comma
+and then another key. Code does not imitate that by accident, which
+matters: a rule that merely looked for a comma would cut
+`parts.join(", ")` in half and write the fragment, which is worse than
+losing the file. It runs only when strict parsing has already failed, and
+only when it finds more than salvage did.
+
 ### The settings that actually matter
 
 **`OLLAMA_NUM_PREDICT`** — how many tokens a single answer may use.
@@ -64,6 +93,26 @@ unfinished, and the whole file set collapses to one file. The parser
 recovers the entries the model did finish, so the run survives, but the
 real fix is headroom: 4096 truncated a five-file answer in practice, 8192
 did not.
+
+Running out is not, however, the usual way files go missing. Measured on
+real qwen3 answers, every one of them finished — `done_reason: stop`, the
+closing braces present — and files were still lost, to quoting rather than
+to length. See **Why a file goes missing** below.
+
+**`OLLAMA_NUM_CTX`** — the context window.
+
+Ollama does not take the model's own window as the default. Send nothing
+and it loads the model at **4096 tokens** no matter what the model
+supports; `ollama ps` reports the figure actually in force, which is how
+this was caught. Anything longer than the window has its front silently
+discarded.
+
+A generation prompt is about 200 tokens, so 4096 was never the binding
+constraint there. The improvement round is the problem: its prompt carries
+the review *and every current file*, so it grows with the work. Eleven
+files of real code is already past 4096, and what falls off the front is
+the task description — the model is asked to fix code against a brief it
+can no longer see.
 
 **`OLLAMA_TIMEOUT`** — seconds before a single call gives up. 600 is
 generous on purpose: feeding the review history into the Architect makes

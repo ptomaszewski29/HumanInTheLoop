@@ -85,6 +85,13 @@ paths are rejected rather than rewritten. A truncated answer keeps the
 entries it finished. Files are written, folders created, existing files
 overwritten. Rows written before the `CODE` → `source` rename still load.
 
+Quoting has its own set. An unescaped quote in generated code must not
+cost the file that carries it, and — the harder half — the lenient reader
+must not cut a file short at a quote that only looks structural.
+`const a = "x", b = 2;`, `parts.join(", ")` and `JSON.parse('{"k": "v"}')`
+are all checked to come back whole, because the first attempt at this
+truncated every one of them.
+
 ### `tests.test_execution_test`
 
 Vitest output parsed from both passing and failing shapes, including

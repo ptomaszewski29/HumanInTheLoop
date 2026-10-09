@@ -187,6 +187,153 @@ rejects("an empty file list", '{"files":[]}')
 
 print()
 print("=" * 80)
+print("A STRAY QUOTE DOES NOT COST A FILE")
+print("=" * 80)
+
+# Taken from a real qwen3 answer: the model writes a string
+# literal into "content" without escaping the quotes. The
+# answer is complete and the braces at the end are right,
+# but a scanner that trusts the quoting loses its place and
+# calls the whole thing truncated.
+STRAY = (
+    '{"files": ['
+    '{"path": "src/a.ts", "content": "export class A {}"},'
+    '{"path": "src/b.ts", "content": "const s = "hi"; export class B {}"},'
+    '{"path": "src/c.ts", "content": "export class C {}"}'
+    "]}"
+)
+
+check(
+    "every file is read, the odd one included",
+    [item.path for item in FileParser.parse(STRAY)],
+    ["src/a.ts", "src/b.ts", "src/c.ts"],
+)
+
+check(
+    "and the quotes are kept where they belong",
+    FileParser.parse(STRAY)[1].content,
+    'const s = "hi"; export class B {}',
+)
+
+check(
+    "a lone backslash costs nothing either",
+    len(
+        FileParser.parse(
+            '{"files": ['
+            r'{"path": "src/a.ts", "content": "const re = /\d+/;"},'
+            '{"path": "src/b.ts", "content": "export class B {}"}'
+            "]}"
+        )
+    ),
+    2,
+)
+
+print()
+print("=" * 80)
+print("THE LENIENT READER NEVER OVERRULES GOOD JSON")
+print("=" * 80)
+
+# It only runs when strict parsing has already failed, and
+# even then only when it finds more than salvage did. These
+# check it cannot corrupt an answer that was fine.
+WELL_FORMED = (
+    '{"files": ['
+    '{"path": "src/a.ts", "content": "a = \\"q\\";\nb();"},'
+    '{"path": "src/b.ts", "content": "line1\nline2\ttabbed"}'
+    "]}"
+)
+
+check(
+    "escaped quotes are unescaped once, not twice",
+    FileParser.parse(WELL_FORMED)[0].content,
+    'a = "q";' + chr(10) + 'b();',
+)
+
+check(
+    "escaped newlines and tabs become real ones",
+    FileParser.parse(WELL_FORMED)[1].content,
+    "line1" + chr(10) + "line2" + chr(9) + "tabbed",
+)
+
+check(
+    "the lenient reader agrees with strict JSON here",
+    [
+        entry["content"]
+        for entry in FileParser.recover_entries(WELL_FORMED)
+    ],
+    [item.content for item in FileParser.parse(WELL_FORMED)],
+)
+
+check(
+    "a truncated answer still stops at what finished",
+    [
+        entry["path"]
+        for entry in FileParser.recover_entries(TRUNCATED)
+    ],
+    ["src/a.ts", "src/b.ts"],
+)
+
+# The lenient reader decides where content ends by what
+# follows the quote. Looking only for a comma or a brace is
+# not enough -- real code contains both right after a quote
+# -- and accepting one truncates the file silently, which
+# is worse than losing it. These are the shapes that caught
+# the first attempt.
+for label, body in (
+    ("a quote then a comma", 'const a = "x", b = 2; end();'),
+    ("join with a quoted separator", 'parts.join(", "); x();'),
+    (
+        "a quote then a brace",
+        "JSON.parse('{\"k\": \"v\"}'); x();",
+    ),
+):
+    check(
+        f"{label} does not cut the file short",
+        FileParser.recover_entries(
+            '{"files":[{"path":"a.ts","content":"'
+            + body
+            + '"}]}'
+        )[0]["content"],
+        body,
+    )
+
+check(
+    "a flaw in the first entry leaves the second alone",
+    [
+        entry["content"]
+        for entry in FileParser.recover_entries(
+            '{"files":[{"path":"a.ts","content":"const s = "hi";"},'
+            '{"path":"b.ts","content":"export class B {}"}]}'
+        )
+    ],
+    ['const s = "hi";', "export class B {}"],
+)
+
+check(
+    "a key after content still ends it",
+    FileParser.recover_entries(
+        '{"files":[{"path":"a.ts","content":"x();",'
+        '"type":"source"}]}'
+    )[0]["content"],
+    "x();",
+)
+
+check(
+    "an entry with no content is skipped, not merged",
+    [
+        entry["path"]
+        for entry in FileParser.recover_entries(
+            '{"files": ['
+            '{"path": "src/a.ts"},'
+            '{"path": "src/b.ts", "content": "export class B {}"}'
+            "]}"
+        )
+    ],
+    ["src/b.ts"],
+)
+
+print()
+print("=" * 80)
 print("EVERY FILE IS WRITTEN")
 print("=" * 80)
 

@@ -187,7 +187,7 @@ its own test.
 | `structure_validator` | imports, exports, cycles, requirement coverage |
 | `review_parser` | the Architect's answer into sections |
 | `finding_filter` | drops claims the validator owns, caps review length |
-| `file_parser` | a model's JSON into files, including truncated answers |
+| `file_parser` | a model's JSON into files, through truncation and bad quoting alike |
 | `file_writer` | writes inside the repository, and nowhere else |
 | `file_naming` | derives repository paths from the generated code |
 | `file_bundle` | renders a file set for prompts and display |

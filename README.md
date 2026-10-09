@@ -232,6 +232,13 @@ answer collapses to a single file. The parser recovers the entries the
 model did finish rather than discarding them, but the real fix is headroom:
 4096 truncated a five-file answer in practice, 8192 did not.
 
+Files are lost to quoting more often than to length. An unescaped quote in
+generated code — `const s = "hi";` is enough — makes a complete answer look
+truncated, and the file carrying it disappears without a word. The parser
+has a pass that reads the entries without trusting the quoting; see
+[docs/CONFIGURATION.md](docs/CONFIGURATION.md) for how it decides where a
+value ends.
+
 ### Environment
 
 Create a `.env` in the project root:

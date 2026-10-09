@@ -11,6 +11,29 @@ FENCE = re.compile(
 
 MAX_FILES = 25
 
+PATH_KEY = re.compile(r'"path"\s*:\s*"([^"\n]*)"')
+
+CONTENT_KEY = re.compile(r'"content"\s*:\s*"')
+
+ESCAPES = {
+    "n": "\n",
+    "t": "\t",
+    "r": "\r",
+    '"': '"',
+    "\\": "\\",
+    "/": "/",
+}
+
+WHITESPACE = " \t\r\n"
+
+# The entry ends here: a closing brace, then the next entry
+# or the end of the list.
+CLOSES_ENTRY = re.compile(r'\s*\}\s*(?:,\s*\{|\]|$)')
+
+# Another key follows in the same entry: a comma, then a
+# quoted name, then a colon.
+NEXT_KEY = re.compile(r'\s*,\s*"[A-Za-z_][\w-]*"\s*:')
+
 
 class FileParseError(ValueError):
     pass
@@ -220,6 +243,121 @@ class FileParser:
         ]
 
     @staticmethod
+    def recover_entries(raw: str) -> list[dict]:
+        """File entries read without trusting the quoting.
+
+        A single unescaped quote inside generated code —
+        `const s = "hi";` is enough — ends the string as
+        far as a strict scanner is concerned, and every
+        brace after it is miscounted. The answer is then
+        declared truncated when it is in fact complete,
+        and the file carrying the quote is lost.
+
+        So this does not scan for structure. It anchors on
+        the two keys that matter and decides where content
+        ends by what follows the quote: a terminator is a
+        quote followed by a comma or a closing brace. A
+        quote inside code is followed by a semicolon, an
+        operator or more code, so it is passed over.
+        """
+
+        text = FENCE.sub("", raw.strip()).strip()
+
+        entries: list[dict] = []
+
+        for match in PATH_KEY.finditer(text):
+
+            path = match.group(1)
+
+            content_key = CONTENT_KEY.search(text, match.end())
+
+            if content_key is None:
+                continue
+
+            # Another path before the content means this
+            # entry has no content of its own.
+            following = PATH_KEY.search(text, match.end())
+
+            if (
+                following is not None
+                and following.start() < content_key.start()
+            ):
+                continue
+
+            content = FileParser._read_until_terminator(
+                text,
+                content_key.end(),
+            )
+
+            if content is None:
+                continue
+
+            entries.append({"path": path, "content": content})
+
+        return entries
+
+    @staticmethod
+    def _read_until_terminator(
+        text: str,
+        start: int,
+    ) -> str | None:
+        """The string beginning at 'start', leniently read."""
+
+        out: list[str] = []
+
+        index = start
+
+        while index < len(text):
+
+            character = text[index]
+
+            if character == "\\" and index + 1 < len(text):
+
+                nxt = text[index + 1]
+
+                out.append(ESCAPES.get(nxt, nxt))
+
+                index += 2
+
+                continue
+
+            if character == '"':
+
+                if FileParser._ends_the_value(text, index):
+                    return "".join(out)
+
+                # A quote in the middle of code: keep it.
+                out.append('"')
+
+                index += 1
+
+                continue
+
+            out.append(character)
+
+            index += 1
+
+        return None
+
+    @staticmethod
+    def _ends_the_value(text: str, quote: int) -> bool:
+        """Whether the quote at 'quote' closes the value.
+
+        Looking only for a comma or a brace after it is not
+        enough: `const a = "x", b = 2;` and `join(", ")`
+        both have one, and accepting either truncates the
+        file in the middle. So what follows must be real
+        JSON structure -- the next entry, the next key, or
+        the end of the list -- which code does not imitate
+        by accident.
+        """
+
+        return bool(
+            CLOSES_ENTRY.match(text, quote + 1)
+            or NEXT_KEY.match(text, quote + 1)
+        )
+
+    @staticmethod
     def safe_path(path: str) -> str | None:
         """A repository-relative path, or None if unsafe.
 
@@ -274,10 +412,19 @@ class FileParser:
             # the model finished before it ran out.
             entries = FileParser.salvage(raw)
 
+            # Salvage only keeps entries whose braces
+            # balance, so a stray quote still costs its
+            # file. Read the keys directly when that has
+            # left anything behind.
+            lenient = FileParser.recover_entries(raw)
+
+            if len(lenient) > len(entries):
+                entries = lenient
+
             if entries:
                 print(
                     f"recovered {len(entries)} file(s) "
-                    "from an incomplete answer"
+                    "from an answer strict JSON rejected"
                 )
 
         if not entries:

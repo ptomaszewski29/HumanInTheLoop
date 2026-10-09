@@ -19,6 +19,14 @@ class Settings:
 
     OLLAMA_NUM_PREDICT = 8192
 
+    # The context window. Ollama defaults to 4096 when this
+    # is not sent, whatever the model supports, and silently
+    # drops the front of anything longer. The improve round
+    # carries every current file in its prompt, so 4096 is
+    # reached as soon as the files hold real code -- and
+    # what falls off the front is the task description.
+    OLLAMA_NUM_CTX = 16384
+
     OLLAMA_TIMEOUT = 600
 
     OLLAMA_THINKING = False

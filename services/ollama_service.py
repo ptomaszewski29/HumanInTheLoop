@@ -28,6 +28,7 @@ class OllamaService:
                 "think": Settings.OLLAMA_THINKING,
                 "options": {
                     "num_predict": Settings.OLLAMA_NUM_PREDICT,
+                    "num_ctx": Settings.OLLAMA_NUM_CTX,
                 },
             },
             timeout=Settings.OLLAMA_TIMEOUT,
