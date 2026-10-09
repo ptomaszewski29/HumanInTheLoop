@@ -79,6 +79,8 @@ class RepositoryContext:
 
     file_count: int = 0
 
+    gitignore: bool = False
+
     @property
     def tests_runnable(self) -> bool:
         """Whether the test gate can actually run here.
@@ -97,8 +99,14 @@ class RepositoryContext:
         )
 
     @property
-    def missing(self) -> list[str]:
-        """The scaffolding this repository has not got."""
+    def build_missing(self) -> list[str]:
+        """Scaffolding without which nothing can be built.
+
+        Narrower than `missing` on purpose: this is what
+        decides the state. A project with a package.json,
+        a tsconfig and a test config is ready to work in
+        whether or not anybody wrote a .gitignore.
+        """
 
         absent: list[str] = []
 
@@ -114,9 +122,20 @@ class RepositoryContext:
         return absent
 
     @property
+    def missing(self) -> list[str]:
+        """Everything bootstrap would write here."""
+
+        absent = list(self.build_missing)
+
+        if not self.gitignore:
+            absent.append(".gitignore")
+
+        return absent
+
+    @property
     def bootstrap_needed(self) -> bool:
 
-        return bool(self.missing)
+        return bool(self.build_missing)
 
     def summary(self) -> str:
         """The report, for a human or a log."""

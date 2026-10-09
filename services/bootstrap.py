@@ -29,6 +29,24 @@ TSCONFIG = {
     "include": ["src", "tests"],
 }
 
+# Everything a generated TypeScript project produces that
+# nobody should commit. node_modules is the one that
+# matters: an install puts tens of thousands of files
+# there, and one careless `git add .` carries them all
+# into the history.
+GITIGNORE = """node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+.env
+.env.local
+
+.DS_Store
+Thumbs.db
+"""
+
 VITEST_CONFIG = """import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
@@ -51,6 +69,7 @@ TEMPLATES = {
     + "\n",
     "tsconfig.json": json.dumps(TSCONFIG, indent=2) + "\n",
     "vitest.config.ts": VITEST_CONFIG,
+    ".gitignore": GITIGNORE,
 }
 
 

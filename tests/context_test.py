@@ -53,6 +53,15 @@ def folder() -> str:
     return tempfile.mkdtemp()
 
 
+def read_text(root: str, name: str) -> str:
+
+    with open(
+        os.path.join(root, name),
+        encoding="utf-8",
+    ) as handle:
+        return handle.read()
+
+
 def read(root: str, name: str) -> dict:
 
     with open(
@@ -76,6 +85,7 @@ check("nothing is set up", blank.missing, [
     "package.json",
     "tsconfig.json",
     "vitest.config.ts",
+    ".gitignore",
 ])
 
 check("so it needs bootstrapping", blank.bootstrap_needed, True)
@@ -224,9 +234,14 @@ fresh = folder()
 created = bootstrap(fresh, describe(fresh))
 
 check(
-    "an empty repository gets all three",
+    "an empty repository gets the lot",
     sorted(created),
-    ["package.json", "tsconfig.json", "vitest.config.ts"],
+    [
+        ".gitignore",
+        "package.json",
+        "tsconfig.json",
+        "vitest.config.ts",
+    ],
 )
 
 settled = describe(fresh)
@@ -247,6 +262,13 @@ check(
     "nothing left missing",
     settled.missing,
     [],
+)
+
+check(
+    "and node_modules will not be committed by accident",
+    "node_modules/"
+    in read_text(fresh, ".gitignore"),
+    True,
 )
 
 check(
@@ -282,7 +304,7 @@ check(
 check(
     "while what was missing is written",
     sorted(created),
-    ["tsconfig.json", "vitest.config.ts"],
+    [".gitignore", "tsconfig.json", "vitest.config.ts"],
 )
 
 check(
@@ -295,6 +317,44 @@ check(
     "every missing name has a template",
     sorted(TEMPLATES),
     sorted(RepositoryContext().missing),
+)
+
+# A .gitignore is worth writing and is not worth calling a
+# project unbuildable over: a repository with the tooling
+# and no .gitignore is ready to work in.
+tidy = folder()
+
+for name in (
+    "package.json",
+    "tsconfig.json",
+    "vitest.config.ts",
+):
+    write(tidy, name, "{}")
+
+no_ignore = describe(tidy)
+
+check(
+    "a missing .gitignore is listed",
+    no_ignore.missing,
+    [".gitignore"],
+)
+
+check(
+    "but does not block the build",
+    no_ignore.build_missing,
+    [],
+)
+
+check(
+    "so the project is ready",
+    no_ignore.state,
+    ProjectState.PROJECT_READY,
+)
+
+check(
+    "and bootstrap still writes the one file",
+    bootstrap(tidy, no_ignore),
+    [".gitignore"],
 )
 
 print()

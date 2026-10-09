@@ -73,6 +73,10 @@ def describe(
         os.path.join(repository_path, "tsconfig.json")
     )
 
+    context.gitignore = os.path.isfile(
+        os.path.join(repository_path, ".gitignore")
+    )
+
     context.test_framework = _framework(
         repository_path,
         found,
@@ -157,7 +161,7 @@ def _state(context: RepositoryContext) -> ProjectState:
     if not context.file_count and not context.package_json:
         return ProjectState.EMPTY
 
-    if context.bootstrap_needed:
+    if context.build_missing:
         return ProjectState.BOOTSTRAP_REQUIRED
 
     return ProjectState.PROJECT_READY
