@@ -35,6 +35,11 @@ from services.git_diff_service import GitDiffService
 from services.git_service import GitError, GitService
 from services.package_installer import blocked, install
 from services.repository_context import describe
+from services.translations import (
+    DEFAULT_LANGUAGE,
+    LANGUAGES,
+    translate,
+)
 from workflows.workflow_orchestrator import (
     WorkflowOrchestrator,
 )
@@ -75,6 +80,27 @@ if "issues" not in st.session_state:
 
 if "install_output" not in st.session_state:
     st.session_state.install_output = ""
+
+if "language" not in st.session_state:
+    st.session_state.language = DEFAULT_LANGUAGE
+
+
+def t(key: str, **values: object) -> str:
+    """One message, in the language this session chose.
+
+    The language lives in session state rather than in a
+    module-level variable, so two browsers pointed at the
+    same server do not change each other's interface.
+    """
+
+    return translate(
+        key,
+        st.session_state.get(
+            "language",
+            DEFAULT_LANGUAGE,
+        ),
+        **values,
+    )
 
 repositories = repository_store.get_all()
 
@@ -140,7 +166,7 @@ def show_files(root: str, files, empty_message: str) -> None:
 
             if content is None:
 
-                st.warning("File not found on disk any more.")
+                st.warning(t("files.gone"))
 
             else:
 
@@ -248,7 +274,7 @@ def execute_planned(plan, item, target_path, started=""):
     return generated, ""
 
 
-def install_panel(path: str) -> None:
+def install_panel(path: str, where: str) -> None:
     """The one button that reaches the network.
 
     Everything else here either writes a file or talks to
@@ -262,32 +288,25 @@ def install_panel(path: str) -> None:
 
     if refusal and not Settings.ENABLE_PACKAGE_INSTALLATION:
 
-        st.caption(
-            "📦 `npm install` is switched off. Set "
-            "`ENABLE_PACKAGE_INSTALLATION = True` in "
-            "config/settings.py to enable the button."
-        )
+        st.caption(t("install.switched_off"))
 
         return
 
     if refusal:
 
-        st.caption(f"📦 Cannot install: {refusal}")
+        st.caption(f"📦 {refusal}")
 
         return
 
-    st.caption(
-        "📦 This downloads packages and runs their "
-        "install scripts. Nothing else in this platform "
-        "does that."
-    )
+    st.caption(t("install.warning"))
 
     if st.button(
-        "📦 Run npm install",
-        key=f"install-{path}",
+        t("install.run"),
+        # Two panels offer this, so the key says which.
+        key=f"install-{where}-{path}",
     ):
 
-        with st.spinner("📦 npm install ..."):
+        with st.spinner(t("install.spinner")):
             result = install(path)
 
         st.session_state.install_output = result.output
@@ -301,7 +320,7 @@ def install_panel(path: str) -> None:
 
     if st.session_state.get("install_output"):
 
-        with st.expander("📦 npm output"):
+        with st.expander(f"{t('install.output')} · {where}"):
             st.code(
                 st.session_state.install_output,
                 language="text",
@@ -342,7 +361,18 @@ if st.session_state.git_message:
 
 with st.sidebar:
 
-    st.header("📦 Repositories")
+    st.session_state.language = st.selectbox(
+        t("app.language"),
+        tuple(LANGUAGES),
+        format_func=lambda code: LANGUAGES[code],
+        index=tuple(LANGUAGES).index(
+            st.session_state.language
+        ),
+    )
+
+    st.divider()
+
+    st.header(t("repo.heading"))
 
     if repositories:
 
@@ -350,7 +380,7 @@ with st.sidebar:
             st.session_state.repository_id = repositories[0].id
 
         st.session_state.repository_id = st.selectbox(
-            "Active repository",
+            t("repo.active"),
             [item.id for item in repositories],
             format_func=lambda item_id: (
                 repositories_by_id[item_id].name
@@ -367,8 +397,7 @@ with st.sidebar:
         if not os.path.isdir(active_repository.path):
 
             st.warning(
-                "Path not found on this machine. "
-                "File generation will need a real folder."
+                t("repo.path_missing")
             )
 
         else:
@@ -379,7 +408,10 @@ with st.sidebar:
             context = describe(active_repository.path)
 
             with st.expander(
-                f"📦 Repository context — {context.state.value}",
+                t(
+                    "repo.context_heading",
+                    state=context.state.value,
+                ),
                 expanded=context.bootstrap_needed,
             ):
 
@@ -387,21 +419,21 @@ with st.sidebar:
 
                 with left:
                     st.metric(
-                        "TypeScript",
+                        t("context.typescript"),
                         "yes" if context.typescript else "no",
                     )
                     st.metric(
-                        "Tests runnable",
+                        t("context.tests_runnable"),
                         "yes" if context.tests_runnable else "no",
                     )
 
                 with right:
                     st.metric(
-                        "package.json",
+                        t("context.package_json"),
                         "yes" if context.package_json else "no",
                     )
                     st.metric(
-                        "Git",
+                        t("context.git"),
                         "yes" if context.git else "no",
                     )
 
@@ -442,12 +474,13 @@ with st.sidebar:
                 ):
 
                     st.warning(
-                        "Vitest is configured but not "
-                        "installed, so the test gate "
-                        "cannot run."
+                        t("context.vitest_not_installed")
                     )
 
-                    install_panel(active_repository.path)
+                    install_panel(
+                        active_repository.path,
+                        "sidebar",
+                    )
 
                 elif context.test_framework not in (
                     TestFramework.NONE,
@@ -455,11 +488,12 @@ with st.sidebar:
                 ):
 
                     st.warning(
-                        f"This project uses "
-                        f"{context.test_framework.value.title()}. "
-                        "The test gate drives Vitest only, "
-                        "so generated tests will not be "
-                        "run."
+                        t(
+                            "context.other_framework",
+                            framework=(
+                                context.test_framework.value.title()
+                            ),
+                        )
                     )
 
         linked_tasks = sum(
@@ -477,11 +511,14 @@ with st.sidebar:
         if linked_tasks:
 
             confirmed = st.checkbox(
-                f"Remove anyway ({linked_tasks} task(s) linked)",
+                t(
+                    "repo.remove_anyway",
+                    count=linked_tasks,
+                ),
             )
 
         if st.button(
-            "🗑 Remove",
+            t("repo.remove"),
             use_container_width=True,
             disabled=not confirmed,
         ):
@@ -494,26 +531,26 @@ with st.sidebar:
 
     else:
 
-        st.info("No repositories yet. Add one below.")
+        st.info(t("repo.none_yet"))
 
-    with st.expander("➕ Add repository"), st.form(
+    with st.expander(t("repo.add")), st.form(
         "add_repository",
         clear_on_submit=True,
     ):
 
-        new_name = st.text_input("Name")
+        new_name = st.text_input(t("repo.name"))
 
-        new_path = st.text_input("Path")
+        new_path = st.text_input(t("repo.path"))
 
         if st.form_submit_button("Add"):
 
             if not new_name.strip() or not new_path.strip():
 
-                st.error("Name and path are both required.")
+                st.error(t("repo.name_and_path_required"))
 
             elif repository_store.get_by_path(new_path.strip()):
 
-                st.error("That folder is already registered.")
+                st.error(t("repo.already_registered"))
 
             else:
 
@@ -528,12 +565,12 @@ with st.sidebar:
 
     st.divider()
 
-    st.header("🧠 Requirements")
+    st.header(t("requirement.heading"))
 
     requirements = requirement_store.get_all()
 
     if not requirements:
-        st.write("No requirements yet.")
+        st.write(t("requirement.none_yet"))
 
     for item in requirements:
 
@@ -551,7 +588,7 @@ with st.sidebar:
             st.rerun()
 
     if st.button(
-        "➕ New requirement",
+        t("requirement.new"),
         use_container_width=True,
     ):
         st.session_state.requirement = Requirement(
@@ -565,7 +602,7 @@ with st.sidebar:
 
     st.divider()
 
-    st.header("📥 GitHub Issues")
+    st.header(t("issue.heading"))
 
     active = (
         repositories_by_id.get(
@@ -586,7 +623,7 @@ with st.sidebar:
             remote_url = ""
 
     if st.button(
-        "🔄 Load open issues",
+        t("issue.load"),
         use_container_width=True,
         disabled=not remote_url,
     ):
@@ -604,7 +641,7 @@ with st.sidebar:
 
     if not remote_url:
         st.caption(
-            "Select a git repository with a GitHub remote."
+            t("issue.needs_github_remote")
         )
 
     for issue in st.session_state.issues or []:
@@ -634,12 +671,12 @@ with st.sidebar:
 
     st.divider()
 
-    st.header("📋 Plans")
+    st.header(t("plan.heading"))
 
     plans = plan_store.get_all()
 
     if not plans:
-        st.write("No plans yet.")
+        st.write(t("plan.none_yet"))
 
     for plan_item in plans:
 
@@ -662,12 +699,12 @@ with st.sidebar:
 
     st.divider()
 
-    st.header("📜 Task History")
+    st.header(t("task.history"))
 
     tasks = repository.get_all()
 
     if not tasks:
-        st.write("No tasks yet.")
+        st.write(t("task.none_yet"))
 
     for task_item in tasks:
 
@@ -684,35 +721,47 @@ with st.sidebar:
 
 if st.session_state.task is None:
 
-    st.info("Status: NEW")
+    st.info(t("requirement.status_new"))
 
 else:
 
-    st.info(f"Status: {st.session_state.task.status.value}")
+    st.info(
+        t(
+            "task.status_now",
+            status=st.session_state.task.status.value,
+        )
+    )
 
 if st.session_state.repository_id:
 
     st.caption(
-        "Repository: "
-        f"{repositories_by_id[st.session_state.repository_id].name}"
+        t(
+            "repo.current",
+            name=repositories_by_id[
+                st.session_state.repository_id
+            ].name,
+        )
     )
 
 else:
 
     st.warning(
-        "Add and select a repository before creating a task."
+        t("app.select_repository_first")
     )
 
 if st.session_state.requirement:
 
     requirement = st.session_state.requirement
 
-    st.subheader("🧠 Requirement")
+    st.subheader(t("requirement.one"))
 
     if requirement.issue.exists:
 
         st.caption(
-            f"Imported from issue {requirement.issue.label}"
+            t(
+                "requirement.imported_from",
+                label=requirement.issue.label,
+            )
         )
 
     plans_for = [
@@ -736,28 +785,24 @@ if st.session_state.requirement:
     )
 
     new_title = st.text_input(
-        "Title",
+        t("requirement.title"),
         value=requirement.title,
         key=f"title-{requirement.id}",
     )
 
     new_content = st.text_area(
-        "Requirements description",
+        t("requirement.description"),
         value=requirement.content,
         height=220,
         key=f"content-{requirement.id}",
-        help=(
-            "User stories, functional and non-functional "
-            "requirements, architecture constraints, "
-            "acceptance criteria."
-        ),
+        help=t("requirement.description_help"),
     )
 
     save_col, plan_col, delete_col = st.columns(3)
 
     with save_col:
 
-        if st.button("💾 Save", use_container_width=True):
+        if st.button(t("requirement.save"), use_container_width=True):
 
             requirement.title = new_title
 
@@ -774,7 +819,7 @@ if st.session_state.requirement:
     with plan_col:
 
         if st.button(
-            "🧠 Generate plan",
+            t("requirement.generate_plan"),
             use_container_width=True,
             disabled=not st.session_state.repository_id
             or not new_content.strip(),
@@ -788,7 +833,7 @@ if st.session_state.requirement:
 
             requirement_store.save(requirement)
 
-            with st.spinner("🧠 Planner ..."):
+            with st.spinner(t("plan.planner_spinner")):
 
                 try:
 
@@ -800,7 +845,12 @@ if st.session_state.requirement:
 
                 except Exception as error:
 
-                    st.error(f"Planner failed: {error}")
+                    st.error(
+                        t(
+                            "plan.planner_failed",
+                            reason=error,
+                        )
+                    )
 
                     st.stop()
 
@@ -817,7 +867,7 @@ if st.session_state.requirement:
     with delete_col:
 
         if st.button(
-            "🗑 Delete",
+            t("requirement.delete"),
             use_container_width=True,
         ):
 
@@ -833,7 +883,7 @@ if st.session_state.plan:
 
     plan = st.session_state.plan
 
-    st.subheader("📋 Planned Tasks")
+    st.subheader(t("plan.planned_tasks"))
 
     st.caption(plan.epic)
 
@@ -864,7 +914,7 @@ if st.session_state.plan:
                     + ", ".join(
                         name
                         for name in (
-                            "package.json",
+                            t("context.package_json"),
                             "tsconfig.json",
                             "vitest.config.ts",
                         )
@@ -891,29 +941,25 @@ if st.session_state.plan:
             and Settings.AUTO_BOOTSTRAP
         ):
             st.info(
-                "Created automatically before the first "
-                "task runs: "
-                + ", ".join(environment.missing)
+                t(
+                    "plan.scaffolding_created",
+                    names=", ".join(environment.missing),
+                )
             )
 
         if not environment.tests_runnable:
 
             st.warning(
-                "The test gate cannot run here, so every "
-                "task in this plan will report "
-                "UNAVAILABLE rather than passing or "
-                "failing. "
+                t("context.gate_cannot_run")
                 + (
-                    "Dependencies are not installed."
+                    t("context.dependencies_missing")
                     if environment.test_framework.supported
-                    else "This project is not set up for "
-                    "Vitest, which is the only runner "
-                    "this platform drives."
+                    else t("context.not_vitest")
                 )
             )
 
             if environment.test_framework.supported:
-                install_panel(target_path)
+                install_panel(target_path, "plan")
 
     # A run-all does one task per script run, so the page
     # repaints between tasks instead of freezing until the
@@ -939,10 +985,13 @@ if st.session_state.plan:
 
                 st.session_state.git_message = (
                     "warning",
-                    f"Zatrzymano przed zadaniem {waiting.id}: czeka na "
-                    + ", ".join(
-                        str(d)
-                        for d in plan.blocked_by(waiting)
+                    t(
+                        "plan.stopped_before",
+                        id=waiting.id,
+                        ids=", ".join(
+                            str(d)
+                            for d in plan.blocked_by(waiting)
+                        ),
                     ),
                 )
 
@@ -953,24 +1002,23 @@ if st.session_state.plan:
     if plan.issues:
 
         st.warning(
-            f"The planner reported {len(plan.issues)} "
-            "problem(s) with the breakdown it proposed:"
+            t("plan.problems", count=len(plan.issues))
         )
 
         for issue in plan.issues:
             st.write(f"- {issue}")
 
-    with st.expander("Dependency graph"):
+    with st.expander(t("plan.dependency_graph")):
 
         levels = plan.levels()
 
         if not levels:
 
-            st.write("No tasks.")
+            st.write(t("plan.no_tasks"))
 
         for depth, layer in enumerate(levels, start=1):
 
-            st.markdown(f"**Step {depth}**")
+            st.markdown(t("plan.step", n=depth))
 
             for item in layer:
 
@@ -994,10 +1042,11 @@ if st.session_state.plan:
 
     st.progress(
         plan.percent_complete,
-        text=(
-            f"{counts['COMPLETED']} / {counts['TOTAL']} "
-            f"ukończonych "
-            f"({plan.percent_complete * 100:.0f}%)"
+        text=t(
+            "plan.progress",
+            done=counts["COMPLETED"],
+            total=counts["TOTAL"],
+            percent=f"{plan.percent_complete * 100:.0f}",
         ),
     )
 
@@ -1011,30 +1060,33 @@ if st.session_state.plan:
     ) = st.columns(6)
 
     with board_1:
-        st.metric("Total", counts["TOTAL"])
+        st.metric(t("board.total"), counts["TOTAL"])
 
     with board_2:
-        st.metric("Completed", counts["COMPLETED"])
+        st.metric(t("board.completed"), counts["COMPLETED"])
 
     with board_3:
-        st.metric("Running", counts["RUNNING"])
+        st.metric(t("board.running"), counts["RUNNING"])
 
     with board_4:
-        st.metric("Ready", counts["READY"])
+        st.metric(t("board.ready"), counts["READY"])
 
     with board_5:
-        st.metric("Blocked", counts["PENDING"])
+        st.metric(t("board.blocked"), counts["PENDING"])
 
     with board_6:
-        st.metric("Failed", counts["FAILED"])
+        st.metric(t("tests.failed"), counts["FAILED"])
 
     current = plan.running
 
     if current is not None:
 
         st.info(
-            f"⏳ **Wykonywane teraz — zadanie {current.id}:** "
-            f"{current.title}"
+            t(
+                "plan.now_running",
+                id=current.id,
+                title=current.title,
+            )
         )
 
     entries = plan.log()
@@ -1042,15 +1094,15 @@ if st.session_state.plan:
     if entries:
 
         with st.expander(
-            f"🪵 Dziennik wykonania ({len(entries)})",
+            t("plan.log", count=len(entries)),
             expanded=current is not None,
         ):
 
             words = {
-                "STARTED": ("▶️", "Rozpoczęto"),
-                "COMPLETED": ("✅", "Ukończono"),
-                "FAILED": ("❌", "Nie powiodło się"),
-                "RUNNING": ("⏳", "Uruchomiono"),
+                "STARTED": ("▶️", t("log.started")),
+                "COMPLETED": ("✅", t("log.completed")),
+                "FAILED": ("❌", t("log.failed")),
+                "RUNNING": ("⏳", t("log.running")),
             }
 
             for entry in entries:
@@ -1060,8 +1112,14 @@ if st.session_state.plan:
                 )
 
                 st.write(
-                    f"`{entry.at[11:19]}` {icon} {verb} — "
-                    f"zadanie {entry.task_id}: {entry.title}"
+                    t(
+                        "log.entry",
+                        at=entry.at[11:19],
+                        icon=icon,
+                        verb=verb,
+                        id=entry.task_id,
+                        title=entry.title,
+                    )
                     + (
                         f" · {entry.detail}"
                         if entry.detail
@@ -1100,16 +1158,23 @@ if st.session_state.plan:
 
             if item.dependencies:
                 st.caption(
-                    "Zależy od: "
-                    + ", ".join(
-                        str(d) for d in item.dependencies
+                    t(
+                        "plan.depends_on",
+                        ids=", ".join(
+                            str(d)
+                            for d in item.dependencies
+                        ),
                     )
                 )
 
             if blocked:
                 st.warning(
-                    "Czeka na: "
-                    + ", ".join(str(d) for d in blocked)
+                    t(
+                        "plan.waiting_for",
+                        ids=", ".join(
+                            str(d) for d in blocked
+                        ),
+                    )
                 )
 
             if record and record.started_at:
@@ -1127,32 +1192,33 @@ if st.session_state.plan:
 
             if status == ExecutionStatus.COMPLETED:
 
-                st.success("Wykonane.")
+                st.success(t("plan.done"))
 
             else:
 
                 if status == ExecutionStatus.FAILED:
 
                     st.error(
-                        f"Nie powiodło się: {record.error}"
+                        t(
+                            "plan.failed",
+                            reason=record.error,
+                        )
                     )
 
                 elif status == ExecutionStatus.RUNNING:
 
                     st.warning(
-                        "Oznaczone jako uruchomione. Jeśli "
-                        "aplikacja została przerwana, "
-                        "uruchom ponownie."
+                        t("plan.marked_running")
                     )
 
                 if st.button(
-                    "🔁 Uruchom ponownie"
+                    t("plan.run_again")
                     if status
                     in (
                         ExecutionStatus.FAILED,
                         ExecutionStatus.RUNNING,
                     )
-                    else "▶️ Uruchom to zadanie",
+                    else t("plan.run_task"),
                     key=f"run-{plan.id}-{item.id}",
                     disabled=bool(blocked)
                     or not target_path
@@ -1176,7 +1242,11 @@ if st.session_state.plan:
                         st.session_state.git_message = (
                             "warning",
                             (
-                                f"Zadanie {item.id} nie powiodło się: {problem}"
+                                t(
+                                    "plan.task_failed",
+                                    id=item.id,
+                                    reason=problem,
+                                )
                             ),
                         )
 
@@ -1203,13 +1273,13 @@ if st.session_state.plan:
             # one that would have started the task after
             # this one.
             if st.button(
-                "⏹ Zatrzymaj po tym zadaniu",
+                t("plan.stop_after_task"),
                 use_container_width=True,
             ):
                 st.session_state.auto_run = None
 
         elif st.button(
-            f"⏩ Uruchom cały plan ({len(plan.remaining)})",
+            t("plan.run_all", count=len(plan.remaining)),
             disabled=not ready or not target_path,
             use_container_width=True,
         ):
@@ -1221,7 +1291,7 @@ if st.session_state.plan:
     with clear:
 
         if st.button(
-            "🗑 Zamknij plan",
+            t("plan.close"),
             use_container_width=True,
         ):
 
@@ -1255,7 +1325,11 @@ if st.session_state.plan:
 
             st.session_state.git_message = (
                 "warning",
-                f"Zatrzymano na zadaniu {pending.id}: {problem}",
+                t(
+                    "plan.stopped_at",
+                    id=pending.id,
+                    reason=problem,
+                ),
             )
 
         else:
@@ -1266,10 +1340,10 @@ if st.session_state.plan:
 
     st.divider()
 
-task_description = st.text_area("Opisz zadanie dla AI")
+task_description = st.text_area(t("app.describe_task"))
 
 if st.button(
-    "Generuj kod",
+    t("app.generate"),
     disabled=not st.session_state.repository_id,
 ) and task_description:
 
@@ -1280,13 +1354,12 @@ if st.button(
     if not os.path.isdir(target_path):
 
         st.error(
-            "Repository folder does not exist, so no files "
-            f"could be written: {target_path}"
+            t("app.folder_missing", path=target_path)
         )
 
         st.stop()
 
-    with st.spinner("🤖 Developer → Architect → QA ..."):
+    with st.spinner(t("app.working")):
 
         try:
 
@@ -1298,7 +1371,7 @@ if st.button(
 
         except Exception as error:
 
-            st.error(f"Workflow failed: {error}")
+            st.error(t("app.workflow_failed", reason=error))
 
             st.stop()
 
@@ -1312,13 +1385,20 @@ if st.session_state.task:
 
     task: Task = st.session_state.task
 
-    st.subheader("Task Details")
+    st.subheader(t("task.details"))
 
-    st.write(f"**Created:** {task.created_at}")
+    st.write(t("task.created", when=task.created_at))
 
-    st.write(f"**Status:** {task.status.value}")
+    st.write(
+        t("task.status_line", status=task.status.value)
+    )
 
-    st.write(f"**Repository:** {repository_label(task)}")
+    st.write(
+        t(
+            "task.repository_line",
+            name=repository_label(task),
+        )
+    )
 
     if task.issue.exists:
 
@@ -1337,28 +1417,30 @@ if st.session_state.task:
         else task.repository_path
     )
 
-    st.write(f"**Description:** {task.description}")
+    st.write(
+        t("task.description_line", text=task.description)
+    )
 
     metric_1, metric_2, metric_3 = st.columns(3)
 
     with metric_1:
 
         st.metric(
-            "Architecture Score",
+            t("task.score"),
             f"{task.architecture_score}/100",
         )
 
     with metric_2:
 
         st.metric(
-            "Recommendation",
+            t("task.recommendation"),
             task.recommendation.value,
         )
 
     with metric_3:
 
         st.metric(
-            "Review Iterations",
+            t("task.review_iterations"),
             task.review_iterations,
         )
 
@@ -1371,54 +1453,61 @@ if st.session_state.task:
     with metric_4:
 
         st.metric(
-            "🚫 Blockers",
+            t("review.blockers"),
             len(task.blockers),
         )
 
     with metric_5:
 
         st.metric(
-            "⚠️ Warnings",
+            t("review.warnings"),
             len(task.warnings),
         )
 
     with metric_6:
 
         st.metric(
-            "💡 Suggestions",
+            t("review.suggestions"),
             len(task.suggestions),
         )
 
     if task.test_result.status == TestStatus.FAILED:
 
         st.error(
-            f"🧪 Tests FAILED — {task.test_result.summary}"
+            t(
+                "tests.failed_summary",
+                summary=task.test_result.summary,
+            )
         )
 
     elif task.test_result.status == TestStatus.ERROR:
 
         st.error(
-            "🧪 The test run did not complete."
+            t("tests.incomplete")
         )
 
     elif task.test_result.status == TestStatus.PASSED:
 
         st.success(
-            f"🧪 Tests PASSED — {task.test_result.summary}"
+            t(
+                "tests.passed_summary",
+                summary=task.test_result.summary,
+            )
         )
 
     elif task.test_result.status == TestStatus.UNAVAILABLE:
 
         st.warning(
-            "🧪 Tests were not run — you are reviewing "
-            "untested code."
+            t("tests.not_run_warning")
         )
 
     if task.structural:
 
         st.error(
-            f"🧱 {len(task.structural)} structural "
-            "finding(s) — see Architecture Review."
+            t(
+                "structural.count_see_review",
+                count=len(task.structural),
+            )
         )
 
     if task.architecture_score > 0:
@@ -1435,13 +1524,13 @@ if st.session_state.task:
         tab_diff,
     ) = st.tabs(
         [
-            "💻 Code",
-            "🏛 Architecture Review",
-            "🏗 Structural Findings",
-            "📜 Review History",
-            "🧪 Tests",
-            "📂 Generated Files",
-            "🔍 Diff Review",
+            t("tab.code"),
+            t("tab.review"),
+            t("tab.structural"),
+            t("tab.history"),
+            t("tab.tests"),
+            t("tab.files"),
+            t("tab.diff"),
         ]
     )
 
@@ -1456,7 +1545,7 @@ if st.session_state.task:
                     for item in task.generated_files
                     if item.file_type == FileType.SOURCE
                 ],
-                "No source files.",
+                t("files.no_source"),
             )
 
         elif task.generated_code:
@@ -1468,14 +1557,12 @@ if st.session_state.task:
 
         else:
 
-            st.warning("No code generated.")
+            st.warning(t("files.no_code"))
 
     with tab_review:
 
         st.caption(
-            "Design, boundaries and maintainability. "
-            "File and import problems live in "
-            "Structural Findings."
+            t("review.scope")
         )
 
         if task.architecture_review:
@@ -1484,13 +1571,12 @@ if st.session_state.task:
 
         else:
 
-            st.info("No architecture review available.")
+            st.info(t("review.none"))
 
     with tab_structure:
 
         st.caption(
-            "Found by a deterministic pass over the "
-            "generated files, not by the model."
+            t("structural.source")
         )
 
         if task.structural:
@@ -1500,7 +1586,7 @@ if st.session_state.task:
 
         else:
 
-            st.success("No structural problems found.")
+            st.success(t("structural.none"))
 
     with tab_history:
 
@@ -1508,11 +1594,23 @@ if st.session_state.task:
 
             for review in task.review_history:
 
-                st.subheader(f"Iteration {review.iteration}")
+                st.subheader(
+                    t(
+                        "history.iteration",
+                        n=review.iteration,
+                    )
+                )
 
-                st.write(f"Score: {review.score}")
+                st.write(
+                    t("history.score", score=review.score)
+                )
 
-                st.write("Recommendation: " f"{review.recommendation.value}")
+                st.write(
+                    t(
+                        "history.recommendation",
+                        value=review.recommendation.value,
+                    )
+                )
 
                 (
                     history_1,
@@ -1523,29 +1621,31 @@ if st.session_state.task:
                 with history_1:
 
                     st.metric(
-                        "🚫 Blockers",
+                        t("review.blockers"),
                         len(review.blockers),
                     )
 
                 with history_2:
 
                     st.metric(
-                        "⚠️ Warnings",
+                        t("review.warnings"),
                         len(review.warnings),
                     )
 
                 with history_3:
 
                     st.metric(
-                        "💡 Suggestions",
+                        t("review.suggestions"),
                         len(review.suggestions),
                     )
 
                 if review.structural:
 
                     st.caption(
-                        f"🧱 {len(review.structural)} "
-                        "structural finding(s)"
+                        t(
+                            "structural.count",
+                            count=len(review.structural),
+                        )
                     )
 
                 st.markdown(review.review)
@@ -1554,17 +1654,17 @@ if st.session_state.task:
 
         else:
 
-            st.info("No review history.")
+            st.info(t("review.no_history"))
 
     with tab_tests:
 
-        st.subheader("🧪 Test Execution")
+        st.subheader(t("tests.execution"))
 
         result = task.test_result
 
         if result.status == TestStatus.NOT_RUN:
 
-            st.info("The tests were never run.")
+            st.info(t("tests.never_run"))
 
         elif result.status == TestStatus.UNAVAILABLE:
 
@@ -1585,27 +1685,30 @@ if st.session_state.task:
             ) = st.columns(4)
 
             with test_1:
-                st.metric("Total", result.total_tests)
+                st.metric(t("board.total"), result.total_tests)
 
             with test_2:
-                st.metric("Passed", result.passed_tests)
+                st.metric(t("tests.passed"), result.passed_tests)
 
             with test_3:
-                st.metric("Failed", result.failed_tests)
+                st.metric(t("tests.failed"), result.failed_tests)
 
             with test_4:
                 st.metric(
-                    "Duration",
+                    t("tests.duration"),
                     f"{result.duration_seconds:.1f}s",
                 )
 
             if result.executed_at:
                 st.caption(
-                    f"Executed: {result.executed_at[:19]}"
+                    t(
+                        "tests.executed_at",
+                        when=result.executed_at[:19],
+                    )
                 )
 
             with st.expander(
-                "Test output",
+                t("tests.output"),
                 expanded=not result.passed,
             ):
                 st.code(result.output, language="text")
@@ -1633,7 +1736,7 @@ if st.session_state.task:
 
         else:
 
-            st.info("No tests available.")
+            st.info(t("tests.none"))
 
     with tab_files:
 
@@ -1645,20 +1748,20 @@ if st.session_state.task:
             # is not a generated file, so nothing else here
             # would mention it.
             st.info(
-                "This run created the project scaffolding "
-                "before writing any code: "
-                + ", ".join(task.environment)
+                t(
+                    "task.scaffolding",
+                    names=", ".join(task.environment),
+                )
             )
 
         if not task.generated_files:
 
-            st.info("No files were written for this task.")
+            st.info(t("files.none_written"))
 
         elif not root:
 
             st.warning(
-                "This task did not record where its files "
-                "were written, so they cannot be read."
+                t("files.no_path")
             )
 
             for generated in task.generated_files:
@@ -1666,14 +1769,12 @@ if st.session_state.task:
 
         else:
 
-            st.caption(f"Written to {root}")
+            st.caption(t("files.written_to", path=root))
 
             if task_repository is None:
 
                 st.info(
-                    "This folder is not registered as a "
-                    "repository any more, but its files are "
-                    "still readable."
+                    t("files.unregistered")
                 )
 
             for generated in task.generated_files:
@@ -1689,7 +1790,7 @@ if st.session_state.task:
                     if content is None:
 
                         st.warning(
-                            "File not found on disk any more."
+                            t("files.gone")
                         )
 
                     else:
@@ -1702,19 +1803,17 @@ if st.session_state.task:
     with tab_diff:
 
         st.caption(
-            "What these files would change in the "
-            "repository. Reading only; nothing is written."
+            t("diff.scope")
         )
 
         if not task.generated_files:
 
-            st.info("This task generated no files.")
+            st.info(t("files.none_generated"))
 
         elif not task_root:
 
             st.warning(
-                "This task did not record a repository, "
-                "so there is nothing to compare against."
+                t("diff.no_repository")
             )
 
         else:
@@ -1746,26 +1845,30 @@ if st.session_state.task:
             ) = st.columns(3)
 
             with diff_1:
-                st.metric("Added", counts["added"])
+                st.metric(t("diff.added"), counts["added"])
 
             with diff_2:
-                st.metric("Modified", counts["modified"])
+                st.metric(t("diff.modified"), counts["modified"])
 
             with diff_3:
-                st.metric("Deleted", counts["deleted"])
+                st.metric(t("diff.deleted"), counts["deleted"])
 
             if counts["unchanged"]:
 
                 st.caption(
-                    f"{counts['unchanged']} file(s) "
-                    "already match the repository."
+                    t(
+                        "diff.already_matching",
+                        count=counts["unchanged"],
+                    )
                 )
 
             if task.git_operation.committed:
 
                 st.info(
-                    "These changes are already committed "
-                    f"as {task.git_operation.short_hash}."
+                    t(
+                        "diff.already_committed",
+                        hash=task.git_operation.short_hash,
+                    )
                 )
 
             st.divider()
@@ -1788,26 +1891,26 @@ if st.session_state.task:
                     elif diff.change_type.value == "unchanged":
 
                         st.caption(
-                            "Identical to the committed "
-                            "version."
+                            t("diff.identical")
                         )
 
                     else:
 
                         st.caption(
-                            "No diff text available any "
-                            "more; the verdict above is "
-                            "what was reviewed."
+                            t("diff.unavailable")
                         )
 
     st.divider()
 
-    st.subheader("Git")
+    st.subheader(t("context.git"))
 
     if task.git_operation.committed:
 
         st.success(
-            f"Committed to `{task.git_operation.branch_name}`"
+            t(
+                "git.committed_to",
+                branch=task.git_operation.branch_name,
+            )
         )
 
         git_1, git_2 = st.columns(2)
@@ -1815,22 +1918,25 @@ if st.session_state.task:
         with git_1:
 
             st.metric(
-                "Branch",
+                t("git.branch"),
                 task.git_operation.branch_name,
             )
 
         with git_2:
 
             st.metric(
-                "Commit",
+                t("git.commit"),
                 task.git_operation.short_hash,
             )
 
         st.caption(
-            f"Created: {task.git_operation.created_at[:10]}"
+            t(
+                "git.created_at",
+                when=task.git_operation.created_at[:10],
+            )
         )
 
-        with st.expander("Commit message"):
+        with st.expander(t("git.commit_message")):
 
             st.code(
                 task.git_operation.commit_message,
@@ -1839,23 +1945,25 @@ if st.session_state.task:
 
         st.divider()
 
-        st.subheader("Remote")
+        st.subheader(t("git.remote"))
 
         if task.git_push.pushed:
 
             st.success(
-                "Push status: SUCCESS — "
-                f"`{task.git_push.remote_branch}`"
+                t(
+                    "git.push_succeeded",
+                    where=task.git_push.remote_branch,
+                )
             )
 
             push_1, push_2 = st.columns(2)
 
             with push_1:
-                st.metric("Remote", task.git_push.remote_name)
+                st.metric(t("git.remote"), task.git_push.remote_name)
 
             with push_2:
                 st.metric(
-                    "Remote branch",
+                    t("git.remote_branch"),
                     task.git_push.branch_name,
                 )
 
@@ -1864,12 +1972,15 @@ if st.session_state.task:
 
             if task.git_push.pushed_at:
                 st.caption(
-                    f"Pushed: {task.git_push.pushed_at[:19]}"
+                    t(
+                        "git.pushed",
+                        where=task.git_push.pushed_at[:19],
+                    )
                 )
 
             st.divider()
 
-            st.subheader("Pull Request")
+            st.subheader(t("pr.heading"))
 
             if task.pull_request.exists:
 
@@ -1882,13 +1993,13 @@ if st.session_state.task:
 
                 with pr_1:
                     st.metric(
-                        "State",
+                        t("pr.state"),
                         task.pull_request.state.value,
                     )
 
                 with pr_2:
                     st.metric(
-                        "Branch",
+                        t("git.branch"),
                         task.pull_request.branch,
                     )
 
@@ -1899,8 +2010,10 @@ if st.session_state.task:
 
                 if task.pull_request.created_at:
                     st.caption(
-                        "Created: "
-                        f"{task.pull_request.created_at[:19]}"
+                        t(
+                            "git.created_at",
+                            when=task.pull_request.created_at[:19],
+                        )
                     )
 
             else:
@@ -1910,8 +2023,10 @@ if st.session_state.task:
                     == PullRequestState.FAILED
                 ):
                     st.error(
-                        "Pull request failed: "
-                        f"{task.pull_request.error}"
+                        t(
+                            "pr.failed",
+                            reason=task.pull_request.error,
+                        )
                     )
 
                 pr_preview = PullRequestAgent.preview(task)
@@ -1922,21 +2037,29 @@ if st.session_state.task:
 
                 if pr_preview["owner"]:
                     st.write(
-                        "**Repository:** "
-                        f"`{pr_preview['owner']}/"
-                        f"{pr_preview['repository']}`"
+                        t(
+                            "pr.repository_line",
+                            owner=pr_preview["owner"],
+                            repo=pr_preview["repository"],
+                        )
                     )
 
                 st.write(
-                    f"**Branch:** `{pr_preview['branch']}`"
+                    t(
+                        "git.branch_line",
+                        branch=pr_preview["branch"],
+                    )
                 )
 
                 st.write(
-                    f"**Title:** {pr_preview['title']}"
+                    t(
+                        "pr.title_line",
+                        title=pr_preview["title"],
+                    )
                 )
 
                 with st.expander(
-                    "Description that would be used"
+                    t("pr.description_preview")
                 ):
                     st.code(
                         pr_preview["body"],
@@ -1947,12 +2070,11 @@ if st.session_state.task:
                     st.warning(pr_reason)
 
                 st.caption(
-                    "This opens a pull request. It is "
-                    "never merged, closed or commented on."
+                    t("pr.note")
                 )
 
                 if st.button(
-                    "🔀 Create pull request",
+                    t("pr.create"),
                     disabled=not pr_allowed,
                 ):
 
@@ -2019,8 +2141,10 @@ if st.session_state.task:
             if task.git_push.status == PushStatus.FAILED:
 
                 st.error(
-                    "Push status: FAILED — "
-                    f"{task.git_push.error}"
+                    t(
+                        "git.push_failed",
+                        reason=task.git_push.error,
+                    )
                 )
 
             push_preview = GitAgent.push_preview(task)
@@ -2028,15 +2152,24 @@ if st.session_state.task:
             allowed, reason = GitAgent.can_push(task)
 
             st.write(
-                f"**Remote:** `{push_preview['remote']}`"
+                t(
+                    "git.remote_line",
+                    remote=push_preview["remote"],
+                )
             )
 
             st.write(
-                f"**Branch:** `{push_preview['branch']}`"
+                t(
+                    "git.branch_line",
+                    branch=push_preview["branch"],
+                )
             )
 
             st.write(
-                f"**Files:** {len(push_preview['files'])}"
+                t(
+                    "git.files_line",
+                    count=len(push_preview["files"]),
+                )
             )
 
             if push_preview["remote_url"]:
@@ -2046,12 +2179,11 @@ if st.session_state.task:
                 st.warning(reason)
 
             st.caption(
-                "This sends the branch to the remote. "
-                "No pull request is created."
+                t("git.push_note")
             )
 
             if st.button(
-                "⬆️ Push branch",
+                t("git.push"),
                 disabled=not allowed,
             ):
 
@@ -2076,7 +2208,12 @@ if st.session_state.task:
 
         preview = GitAgent.preview(task)
 
-        st.write(f"**Branch:** `{preview['branch']}`")
+        st.write(
+            t(
+                "git.branch_line",
+                branch=preview["branch"],
+            )
+        )
 
         if preview["files"]:
 
@@ -2085,26 +2222,26 @@ if st.session_state.task:
 
         else:
 
-            st.info("No files would be committed.")
+            st.info(t("git.nothing_to_commit"))
 
         if task.repository_path and not GitService(
             task.repository_path
         ).is_repository():
 
             st.warning(
-                "The repository folder is not a git "
-                "repository, so nothing can be committed: "
-                f"{task.repository_path}"
+                t(
+                    "git.not_a_repository",
+                    path=task.repository_path,
+                )
             )
 
         if task.status != TaskStatus.APPROVED:
 
             st.caption(
-                "Approving the task creates this branch "
-                "and commit. Nothing is pushed."
+                t("git.approve_note")
             )
 
-        with st.expander("Commit message that would be used"):
+        with st.expander(t("git.commit_message_preview")):
 
             st.code(preview["message"], language="text")
 
@@ -2115,7 +2252,7 @@ if st.session_state.task:
     with col1:
 
         if st.button(
-            "✅ Akceptuj",
+            t("task.approve"),
             disabled=task.status == TaskStatus.APPROVED,
         ):
 
@@ -2159,7 +2296,7 @@ if st.session_state.task:
 
     with col2:
 
-        if st.button("❌ Odrzuć"):
+        if st.button(t("task.reject")):
 
             task.status = TaskStatus.REJECTED
 

@@ -217,6 +217,8 @@ its own test.
 | `import_repair` | cuts an import a file makes of itself, and says so |
 | `repository_survey` | what is already on disk, and what it exports |
 | `repository_context` | what the repository *is*: state, tooling, test framework |
+| `translations` | every word the interface says, in both languages |
+| `package_installer` | the one call that reaches the network, behind a button |
 | `bootstrap` | writes the scaffolding a repository is missing, from templates |
 | `file_writer` | writes inside the repository, and nowhere else |
 | `file_naming` | derives repository paths from the generated code |

@@ -171,6 +171,31 @@ returned the same eleven files with twenty characters changed. It now
 rewrites only the files the review is about — worked out in code by reading
 the paths out of the review text — and leaves the others byte-identical.
 
+### Language
+
+The interface speaks Polish or English, chosen in the sidebar and kept
+per browser session rather than in a module-level variable, so two
+browsers pointed at the same server do not change each other's
+interface.
+
+Every message lives in `services/translations.py`, keyed by a name rather
+than by its English text, so rewording the English cannot silently orphan
+the Polish. `tests.translation_test` refuses to pass while a key is
+missing a language, while the two languages disagree about their
+placeholders, or while any prose is still written literally into
+`app.py` — a half-translated interface being the normal end state of
+this kind of work.
+
+**The agents are deliberately not translated**, and that is a decision
+rather than an omission. Their answers are parsed: the review markers
+(`SCORE:`, `BLOCKERS:`), and eighteen regular expressions in
+`finding_filter` that strip the structural claims the model is told not
+to make. All of them match English. An architect answering in Polish
+would slip every one, and the grounding built across Sprints 6C and 6D
+would stop working without saying so. A requirement written in Polish is
+understood perfectly well; it is the answer that has to stay in the
+language the code reads.
+
 ### Scaffolding and dependencies
 
 **`AUTO_BOOTSTRAP`** — write the `package.json`, `tsconfig.json` and

@@ -78,6 +78,16 @@ findings must survive — including ones that use the same words, like
 Then the policy: a structural finding outranks the model entirely, even an
 explicit `REJECT`.
 
+### `tests.translation_test`
+
+Every key exists in both languages, the two agree about their
+placeholders, an unknown key shows itself in brackets rather than
+rendering blank, and an unknown language falls back instead of failing.
+
+Then the part that does the real work: it parses `app.py` and fails if
+any prose is still written literally into a widget. Without it, the next
+feature adds an English string nobody notices until a Polish user does.
+
 ### `tests.install_test`
 
 npm is never run here — the subprocess is faked, so nothing is
