@@ -86,6 +86,16 @@ this, a task that blew up simply reappeared as ready: the UI could not tell
 because the graph knows them; deriving `FAILED` is impossible, because only
 the run knows. Store the attempt, derive the rest.
 
+**The model has to fit the card** — a task took an hour and the reflex was
+to blame the pipeline. It was the hardware: 46% of an 8B model was running
+on the CPU of a 6 GB laptop, at 5.5 tokens a second, and had been all
+along. A model that fits measured nine times faster. Two of the
+"optimisations" tried first made it worse — a bigger context window pushed
+more of the model onto the CPU, and batching files into one call bought
+nothing (the token count is the same either way) while making a single
+timeout cost three files instead of one. Measure where the time goes
+before changing what produces it.
+
 **One call per file** — "how much code comes out" turned out to be three
 separate problems wearing one coat. A parser that lost a file to an unescaped
 quote and said nothing. A review round that returned its input with twenty

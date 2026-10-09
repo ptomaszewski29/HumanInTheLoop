@@ -7,17 +7,27 @@ from services.file_naming import FileNaming
 from services.file_parser import FileParseError, FileParser
 from services.llm_factory import LLMFactory
 
+# The paths in these examples are deliberately not names
+# any real task would produce. A small model copies a
+# plausible example instead of answering: shown
+# "src/notification.service.ts", a 3B model planned exactly
+# that for the task "Create package.json". EXAMPLE_PATHS is
+# the mechanical guard that goes with it.
+EXAMPLE_PATHS = frozenset(
+    {"src/example-one.ts", "src/example-two.ts"}
+)
+
 FORMAT = """
 Return only JSON in exactly this shape:
 
 {
   "files": [
     {
-      "path": "src/notification.service.ts",
+      "path": "src/example-one.ts",
       "content": "...typescript..."
     },
     {
-      "path": "src/email.provider.ts",
+      "path": "src/example-two.ts",
       "content": "...typescript..."
     }
   ]
@@ -25,8 +35,11 @@ Return only JSON in exactly this shape:
 
 Rules:
 
+- those two paths show the format only; never use them
 - one file per logical component
-- paths are relative, always starting with src/
+- paths are relative to the repository root
+- source files go under src/; a configuration file such
+  as package.json or tsconfig.json sits at the root
 - never use .. in a path
 - put the whole file in "content"
 - escape newlines in "content" as \n
@@ -39,22 +52,26 @@ Return only JSON in exactly this shape:
 {
   "files": [
     {
-      "path": "src/notification.service.ts",
-      "content": "Routes a notification to the right provider."
+      "path": "src/example-one.ts",
+      "content": "One sentence about what this file is for."
     },
     {
-      "path": "src/email.provider.ts",
-      "content": "Sends a rendered message over SMTP."
+      "path": "src/example-two.ts",
+      "content": "One sentence about what this file is for."
     }
   ]
 }
 
 Rules:
 
+- those two paths show the format only; never use them
+- name the files this task needs, not the ones above
 - "content" is one sentence saying what the file is for
 - no code at this stage
 - one file per logical component
-- paths are relative, always starting with src/
+- paths are relative to the repository root
+- source files go under src/; a configuration file such
+  as package.json or tsconfig.json sits at the root
 - never use .. in a path
 - no explanations outside the JSON
 """
@@ -162,10 +179,17 @@ You are a Senior TypeScript Developer.
 Task:
 {task}
 
-List the files a real project would have for
-this: one interface, service, provider or
-component per file. At most
-{Settings.MAX_FILES_PER_TASK} files.
+List only the files this task actually needs.
+
+Match the list to the task. "Initialise a node
+project" is one file; a notification platform
+with three providers is a dozen. Do not pad the
+list to look thorough: every file you name costs
+a call, and a file nobody asked for is worse
+than no file.
+
+One file is a perfectly good answer. At most
+{Settings.MAX_FILES_PER_TASK}.
 {PLAN_FORMAT}
 """
 
@@ -187,7 +211,17 @@ component per file. At most
         planned = [
             (item.path, item.content.strip())
             for item in entries
+            if item.path not in EXAMPLE_PATHS
         ][: Settings.MAX_FILES_PER_TASK]
+
+        if not planned:
+
+            print(
+                "DEVELOPER: the plan was the example copied "
+                "back; falling back to one call"
+            )
+
+            return []
 
         print("=" * 80)
         print(f"DEVELOPER PLAN ({len(planned)} file(s))")
@@ -200,29 +234,86 @@ component per file. At most
 
         return planned
 
+    @staticmethod
+    def _batches(
+        planned: list[tuple[str, str]],
+    ) -> list[list[tuple[str, str]]]:
+        """The planned files, grouped per call."""
+
+        size = max(1, Settings.FILES_PER_CALL)
+
+        return [
+            planned[start : start + size]
+            for start in range(0, len(planned), size)
+        ]
+
     def _write_each(
         self,
         task: str,
         planned: list[tuple[str, str]],
     ) -> list[GeneratedFile]:
-        """One call per planned file."""
+        """Writes the planned files, a batch per call."""
 
         listing = "\n".join(
             f"- {path}: {purpose}"
             for path, purpose in planned
         )
 
+        batches = self._batches(planned)
+
         files: list[GeneratedFile] = []
 
-        for position, (path, purpose) in enumerate(
-            planned,
-            start=1,
-        ):
+        for position, batch in enumerate(batches, start=1):
 
             print(
-                f"DEVELOPER: writing {path} "
-                f"({position}/{len(planned)})"
+                "DEVELOPER: writing "
+                + ", ".join(path for path, _ in batch)
+                + f" ({position}/{len(batches)})"
             )
+
+            files.extend(
+                self._write_batch(task, listing, batch)
+            )
+
+        if not files:
+            raise RuntimeError(
+                "DeveloperAgent wrote none of the "
+                f"{len(planned)} planned file(s)."
+            )
+
+        missing = [
+            path
+            for path, _ in planned
+            if path not in {item.path for item in files}
+        ]
+
+        if missing:
+            print(
+                f"DEVELOPER: {len(missing)} planned file(s) "
+                "did not come back: " + ", ".join(missing)
+            )
+
+        self._announce(files)
+
+        return files
+
+    def _write_batch(
+        self,
+        task: str,
+        listing: str,
+        batch: list[tuple[str, str]],
+    ) -> list[GeneratedFile]:
+        """One call's worth of files.
+
+        A batch of one asks for plain TypeScript, which
+        takes JSON out of the picture altogether. Anything
+        larger has to answer in JSON, because one answer
+        carries several files.
+        """
+
+        if len(batch) == 1:
+
+            path, purpose = batch[0]
 
             content = self._write_one(
                 task,
@@ -231,24 +322,73 @@ component per file. At most
                 purpose,
             )
 
-            if content:
-                files.append(
+            return (
+                [
                     GeneratedFile(
                         path=path,
                         file_type=FileType.SOURCE,
                         content=content,
                     )
-                )
-
-        if not files:
-            raise RuntimeError(
-                "DeveloperAgent wrote none of the "
-                f"{len(planned)} planned file(s)."
+                ]
+                if content
+                else []
             )
 
-        self._announce(files)
+        wanted = "\n".join(
+            f"- {path}: {purpose}" for path, purpose in batch
+        )
 
-        return files
+        prompt = f"""
+You are a Senior TypeScript Developer.
+
+Overall task:
+{task}
+
+The solution is split across these files:
+{listing}
+
+Write exactly these {len(batch)}, and no others:
+{wanted}
+
+Write each one in full. Every method has a real
+body. No TODO, no placeholder, no "in a real
+implementation this would ...". Import from the
+other files by their paths above where you need
+them.
+{FORMAT}
+"""
+
+        try:
+            raw = self.llm.generate_text(prompt)
+
+        except Exception as error:  # noqa: BLE001
+
+            print(
+                "DEVELOPER: batch failed "
+                f"({error}): "
+                + ", ".join(path for path, _ in batch)
+            )
+
+            return []
+
+        try:
+            written = FileParser.parse(raw, FileType.SOURCE)
+
+        except (FileParseError, ValueError) as error:
+
+            print(f"DEVELOPER: batch unusable ({error})")
+
+            return []
+
+        # The model is asked for specific paths and does
+        # not always honour them. Keeping anything it
+        # invents would quietly grow the file set past the
+        # plan the rest of the run is working from.
+        asked = {path for path, _ in batch}
+
+        return [
+            item for item in written if item.path in asked
+        ]
 
     def _write_one(
         self,

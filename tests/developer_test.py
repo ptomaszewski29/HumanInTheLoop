@@ -57,10 +57,12 @@ class FakeLLM:
         plan: object = None,
         fail_on: tuple[str, ...] = (),
         empty_on: tuple[str, ...] = (),
+        extra: tuple[dict, ...] = (),
     ) -> None:
         self.plan = json.dumps(PLAN) if plan is None else plan
         self.fail_on = fail_on
         self.empty_on = empty_on
+        self.extra = extra
         self.prompts: list[str] = []
 
     def generate_text(self, prompt: str) -> str:
@@ -71,12 +73,31 @@ class FakeLLM:
             return self.plan
 
         for path in self.fail_on:
-            if f"Write exactly one of them: {path}" in prompt:
+            if (
+                f"Write exactly one of them: {path}" in prompt
+                or f"- {path}:" in prompt.split("Write exactly these")[-1]
+                and "Write exactly these" in prompt
+            ):
                 raise RuntimeError("the provider fell over")
 
         for path in self.empty_on:
             if f"Write exactly one of them: {path}" in prompt:
                 return "   "
+
+        if "Write exactly these" in prompt:
+            return json.dumps(
+                {
+                    "files": [
+                        {
+                            "path": path,
+                            "content": f"export class From_{path} "
+                            "{ run() {} }",
+                        }
+                        for path in self.batch_paths(prompt)
+                    ]
+                    + list(self.extra)
+                }
+            )
 
         written = ""
 
@@ -85,6 +106,30 @@ class FakeLLM:
                 written = line.split(": ", 1)[1]
 
         return f"export class From_{written} {{ run() {{}} }}"
+
+    @staticmethod
+    def batch_paths(prompt: str) -> list[str]:
+        """The paths a batch prompt asked for."""
+
+        wanted: list[str] = []
+
+        inside = False
+
+        for line in prompt.splitlines():
+
+            if line.startswith("Write exactly these"):
+                inside = True
+                continue
+
+            if inside:
+
+                if line.startswith("- "):
+                    wanted.append(line[2:].split(":", 1)[0])
+
+                elif wanted:
+                    break
+
+        return wanted
 
     def generate_code(self, prompt: str) -> str:
         return ""
@@ -121,6 +166,10 @@ def written_paths(llm: FakeLLM) -> list[str]:
 
 
 Settings.GENERATE_FILE_BY_FILE = True
+
+# One file per call: the shape that produces the deepest
+# code, and the one the batching below is measured against.
+Settings.FILES_PER_CALL = 1
 
 print("=" * 80)
 print("A PLAN FIRST, THEN ONE CALL PER FILE")
@@ -299,6 +348,83 @@ check(
 
 print()
 print("=" * 80)
+print("THE EXAMPLE IN THE PROMPT IS NOT AN ANSWER")
+print("=" * 80)
+
+# A 3B model shown "src/notification.service.ts" as a
+# format example planned exactly that for the task
+# "Create package.json". The example paths are therefore
+# names no real task produces, and a plan made only of
+# them is treated as no plan at all.
+from agents.developer_agent import EXAMPLE_PATHS
+
+echoed = json.dumps(
+    {
+        "files": [
+            {"path": path, "content": "Something."}
+            for path in sorted(EXAMPLE_PATHS)
+        ]
+    }
+)
+
+llm = FakeLLM(plan=echoed)
+
+files = developer(llm).execute("Create package.json.")
+
+check(
+    "a plan that is only the example is refused",
+    any(
+        item.path in EXAMPLE_PATHS for item in files
+    ),
+    False,
+)
+
+check(
+    "and the run falls back rather than stopping",
+    bool(files),
+    True,
+)
+
+mixed = json.dumps(
+    {
+        "files": [
+            {
+                "path": "src/example-one.ts",
+                "content": "Copied from the example.",
+            },
+            {
+                "path": "src/real.ts",
+                "content": "The actual file.",
+            },
+        ]
+    }
+)
+
+llm = FakeLLM(plan=mixed)
+
+check(
+    "an example path mixed into a real plan is dropped",
+    [
+        item.path
+        for item in developer(llm).execute("Build it.")
+    ],
+    ["src/real.ts"],
+)
+
+check(
+    "the prompt tells the model not to reuse them",
+    "never use them" in llm.prompts[0],
+    True,
+)
+
+check(
+    "a config file at the root is allowed",
+    "sits at the root" in llm.prompts[0],
+    True,
+)
+
+print()
+print("=" * 80)
 print("A REVIEW ROUND REWRITES WHAT IT NAMES")
 print("=" * 80)
 
@@ -467,6 +593,129 @@ check(
     FileParser.paths_in("/etc/evil.ts is imported"),
     [],
 )
+
+print()
+print("=" * 80)
+print("FILES ARE WRITTEN A BATCH PER CALL")
+print("=" * 80)
+
+# The reason batching exists: twelve round trips took an
+# hour on a local model. Three files to a call is a third
+# of the calls.
+Settings.FILES_PER_CALL = 3
+
+llm = FakeLLM()
+
+files = developer(llm).execute("Build a notifier.")
+
+check(
+    "a plan, then one call for all three",
+    len(llm.prompts),
+    2,
+)
+
+check(
+    "every planned file still arrives",
+    [item.path for item in files],
+    [
+        "src/dispatcher.ts",
+        "src/email.provider.ts",
+        "src/retry.policy.ts",
+    ],
+)
+
+check(
+    "the batch call names only its own files",
+    FakeLLM.batch_paths(llm.prompts[1]),
+    [
+        "src/dispatcher.ts",
+        "src/email.provider.ts",
+        "src/retry.policy.ts",
+    ],
+)
+
+check(
+    "and still forbids stubs",
+    "No TODO, no placeholder" in llm.prompts[1],
+    True,
+)
+
+Settings.FILES_PER_CALL = 2
+
+llm = FakeLLM()
+
+files = developer(llm).execute("Build a notifier.")
+
+check(
+    "three files over two calls",
+    len(llm.prompts),
+    3,
+)
+
+def asked_for(prompt: str) -> int:
+    """Files one call was asked for, whichever shape."""
+
+    if "Write exactly one of them:" in prompt:
+        return 1
+
+    return len(FakeLLM.batch_paths(prompt))
+
+
+check(
+    "split two then one",
+    [asked_for(prompt) for prompt in llm.prompts[1:]],
+    [2, 1],
+)
+
+check(
+    "a batch of one drops the JSON entirely",
+    "Write exactly one of them:" in llm.prompts[2],
+    True,
+)
+
+check(
+    "and all three arrive",
+    len(files),
+    3,
+)
+
+print()
+print("=" * 80)
+print("A BATCH IS HELD TO WHAT IT WAS ASKED FOR")
+print("=" * 80)
+
+Settings.FILES_PER_CALL = 3
+
+llm = FakeLLM(
+    extra=(
+        {
+            "path": "src/invented.ts",
+            "content": "export class Invented {}",
+        },
+    )
+)
+
+files = developer(llm).execute("Build a notifier.")
+
+check(
+    "a file nobody asked for is dropped",
+    [item.path for item in files],
+    [
+        "src/dispatcher.ts",
+        "src/email.provider.ts",
+        "src/retry.policy.ts",
+    ],
+)
+
+llm = FakeLLM(plan="not json at all")
+
+check(
+    "an unusable plan still falls back",
+    bool(developer(llm).execute("Build a notifier.")),
+    True,
+)
+
+Settings.FILES_PER_CALL = 1
 
 print()
 print("=" * 80)

@@ -13,7 +13,14 @@ class Settings:
 
     GEMINI_MODEL = "gemini-3.8-flash"
 
-    OLLAMA_MODEL = "qwen3"
+    # A model has to fit the card with its KV cache or it
+    # runs half on the CPU. qwen3:8b is 5.2 GB and needs
+    # 7.8 GB with a 16k window, against 6 GB of VRAM: 46%
+    # of it ran on the processor, at 5.5 tokens a second.
+    # This one fits, and measures nine times faster on the
+    # same task with no placeholder comments in the output.
+    # It writes about half as much per file.
+    OLLAMA_MODEL = "qwen2.5-coder:3b"
 
     OLLAMA_URL = "http://localhost:11434/api/generate"
 
@@ -63,6 +70,23 @@ class Settings:
     # time above, and the planning call tends to pad a list
     # it is not given a limit for.
     MAX_FILES_PER_TASK = 12
+
+    # How many files one call writes.
+    #
+    # Batching looks like it should cut the time and does
+    # not. A task is slow because of the tokens it has to
+    # generate, and the same code is the same tokens
+    # whether it arrives in four answers or twelve; all
+    # batching saves is re-sending the prompt, which is
+    # seconds. What it costs is real: three files to a call
+    # made a single call long enough to hit OLLAMA_TIMEOUT,
+    # and a timeout then lost three files instead of one.
+    #
+    # So this stays at 1, where the model is asked for
+    # plain TypeScript and JSON is out of the picture
+    # entirely. Above 1 it answers in JSON, because one
+    # answer then has to carry several files.
+    FILES_PER_CALL = 1
 
     # =====================
     # TEST EXECUTION

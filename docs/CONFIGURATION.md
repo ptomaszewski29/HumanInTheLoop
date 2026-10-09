@@ -84,6 +84,56 @@ matters: a rule that merely looked for a comma would cut
 losing the file. It runs only when strict parsing has already failed, and
 only when it finds more than salvage did.
 
+### The model has to fit the card
+
+This matters more than every other setting here put
+together, and it is invisible until measured.
+
+Ollama loads what it can onto the GPU and runs the rest on
+the processor. It does not complain; it is just slow.
+`ollama ps` reports `size` against `size_vram`, and the
+gap is the part running on the CPU.
+
+qwen3:8b is 5.2 GB and needs 7.8 GB with a 16k window,
+against 6 GB of VRAM. Measured on the same prompt:
+
+| model | tokens/sec | on the GPU |
+|---|---|---|
+| qwen3:8b | 5.5 - 6.4 | 54% |
+| qwen3:4b | 28.6 | all of it |
+| qwen2.5-coder:3b | 59.2 | all of it |
+
+Nine times, for a model that fits. A twelve-file task went
+from nineteen minutes to under two. That is also why
+`OLLAMA_NUM_CTX` has to be chosen with the model and not
+on its own: the window sizes the KV cache, the cache
+competes with the weights for the card, and raising the
+window from 4096 to 16384 cost 45% of the speed on the 8B
+model. On a model that fits, it costs nothing.
+
+The 3B writes less per file than the 8B -- roughly a third
+of the volume on the same task -- and no placeholder
+comments. If the depth matters more than the wait,
+`OLLAMA_MODEL` is one line.
+
+### Watch for the model answering with your example
+
+A small model will copy a plausible example rather than
+answer. Shown `src/notification.service.ts` as a format
+example, the 3B planned exactly that file for the task
+"Create package.json" -- three unrelated tasks in a row
+produced the same two invented files.
+
+So the examples in the prompts use paths no real task
+would produce (`src/example-one.ts`), the rules say not to
+reuse them, and `EXAMPLE_PATHS` in the developer drops any
+that come back anyway. A plan made only of example paths
+is treated as no plan at all.
+
+This is worth remembering whenever the model is changed
+for a smaller one: a prompt that a larger model reads as
+an illustration, a smaller one reads as an answer.
+
 ### One call per file
 
 `GENERATE_FILE_BY_FILE` decides whether a task is one call or many.

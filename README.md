@@ -73,8 +73,14 @@ pip install -r requirements.txt
 Pull the model the project expects:
 
 ```powershell
-ollama pull qwen3
+ollama pull qwen2.5-coder:3b
 ```
+
+A model has to fit your graphics card or Ollama quietly runs part of it on
+the processor. This one is 1.9 GB and fits a 6 GB laptop card with room for
+a 16k context. Before swapping it for something larger, read
+[docs/CONFIGURATION.md](docs/CONFIGURATION.md) — an 8B model on the same
+card measured nine times slower.
 
 Make sure Ollama is serving on `http://localhost:11434`:
 
@@ -159,17 +165,19 @@ depended on it still blocked. **🔁 Uruchom ponownie** retries one.
 Write what you want and press **Generuj kod**.
 
 The Developer asks for the file list first, then writes each file in its
-own call. That is what gets you real code instead of stubs — a file goes
-from about 11 lines to about 50 — and it is why a run takes a while: each
-file is its own round trip. On a local 8B model, budget a couple of minutes
-per file plus the review rounds, so **25–45 minutes** for a task that
-produces a dozen files.
+own call. Writing one file at a time is what gets real code instead of
+stubs, and the plan is sized to the task — "Create package.json" plans one
+file, a notification platform plans eight.
 
-If that is too slow, `GENERATE_FILE_BY_FILE = False` in
+Budget roughly **ten seconds per file** plus the review rounds, so under a
+minute for a small task and a few minutes for a dozen files. That figure
+holds only while the model fits your graphics card; see
+[docs/CONFIGURATION.md](docs/CONFIGURATION.md) before changing
+`OLLAMA_MODEL`.
+
+`GENERATE_FILE_BY_FILE = False` in
 [config/settings.py](config/settings.py) goes back to one call for the
-whole set: minutes instead of half an hour, and thinner files. The
-measurements behind the trade-off are in
-[docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+whole set: quicker, and thinner files.
 
 The page is busy for the whole task — see **Known limitations**.
 
@@ -390,9 +398,9 @@ the plan advances a task at a time and repaints in between, but the task
 itself is synchronous, so the page is busy until it ends.
 
 **A task gives no progress while it runs.** Writing a file at a time made
-this worse rather than better: a task is now a dozen calls instead of one,
+this worse rather than better: a task is now several calls instead of one,
 and the page shows the same spinner for all of them. The console prints
-`DEVELOPER: writing src/x.ts (3/12)`, so that is where to look meanwhile.
+`DEVELOPER: writing src/x.ts (3/8)`, so that is where to look meanwhile.
 The plan dashboard already solves this one level up — persist the state,
 draw the page, then do the work — and the same treatment inside a task is
 the obvious next thing to build.

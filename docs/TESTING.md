@@ -88,6 +88,11 @@ only the files the review names, adds the ones it says are missing, and
 leaves the rest byte-identical — including the case where the review names
 no file at all.
 
+A plan that is only the prompt's own example back is treated as no plan,
+and an example path mixed into a real plan is dropped — a small model
+answers with the illustration it was shown, which is how three unrelated
+tasks all produced `src/notification.service.ts`.
+
 Paths are read out of review prose rather than asked for, so that has its
 own checks: prose is not mistaken for a path, a bare file name is not one,
 and `../../etc/evil.ts` yields nothing. That last one is not hypothetical —
