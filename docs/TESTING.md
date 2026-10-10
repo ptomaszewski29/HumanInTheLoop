@@ -88,6 +88,21 @@ Then the part that does the real work: it parses `app.py` and fails if
 any prose is still written literally into a widget. Without it, the next
 feature adds an English string nobody notices until a Polish user does.
 
+### `tests.compile_test`
+
+The compiler is never run — its real output is fed in as text. Its
+diagnostics become data with a file, a line and a code; a project-wide
+error has no file and says so; unrelated chatter parses to nothing.
+
+`FAILED` blocks delivery and `UNAVAILABLE` does not, the same split the
+test gate makes. The brief names files and lines, says to change nothing
+else, and caps a wall of errors rather than pasting it.
+
+How it is run is checked too: node against the compiler's own
+JavaScript, `--noEmit` so it writes nothing, `--pretty false` because
+Windows cannot decode the box drawing, never a shell, always in the
+repository.
+
 ### `tests.install_test`
 
 npm is never run here — the subprocess is faked, so nothing is

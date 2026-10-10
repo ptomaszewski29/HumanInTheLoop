@@ -632,6 +632,50 @@ MESSAGES: dict[str, dict[str, str]] = {
         "pl": "Zapisano plików na dysk",
         "en": "Files written to disk",
     },
+    "step.types": {
+        "pl": "Sprawdzono typy",
+        "en": "Types checked",
+    },
+    "step.types_retry": {
+        "pl": "Typy po poprawce",
+        "en": "Types after a fix",
+    },
+    "types.heading": {
+        "pl": "🧮 Kompilacja",
+        "en": "🧮 Compilation",
+    },
+    "types.passed": {
+        "pl": "🧮 Kod się kompiluje — bez błędów typów.",
+        "en": "🧮 The code compiles — no type errors.",
+    },
+    "types.failed": {
+        "pl": "🧮 Kompilacja odrzuciła kod — {summary}",
+        "en": "🧮 Compilation rejected the code — {summary}",
+    },
+    "types.unavailable": {
+        "pl": "🧮 Kompilator nie mógł działać: {reason}",
+        "en": "🧮 The compiler could not run: {reason}",
+    },
+    "types.not_run": {
+        "pl": "🧮 Kompilacji nie uruchomiono.",
+        "en": "🧮 Compilation was not run.",
+    },
+    "types.errors": {
+        "pl": "Błędy kompilatora ({count})",
+        "en": "Compiler errors ({count})",
+    },
+    "tests.skipped_no_compile": {
+        "pl": (
+            "🧪 Testów nie uruchomiono, bo kod się nie "
+            "kompiluje — każdy zestaw i tak nie dałby się "
+            "wczytać."
+        ),
+        "en": (
+            "🧪 Tests were not run because the code does "
+            "not compile — every suite would fail to "
+            "load anyway."
+        ),
+    },
     "step.tests": {
         "pl": "Uruchomiono testy",
         "en": "Tests run",

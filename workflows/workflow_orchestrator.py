@@ -13,6 +13,8 @@ from models.review_history import (
 )
 from models.task import Task
 from models.task_status import TaskStatus
+from models.test_result import TestResult, TestStatus
+from services import type_checker
 from services.bootstrap import bootstrap
 from services.file_writer import FileWriter
 from services.git_diff_service import GitDiffService
@@ -161,34 +163,68 @@ class WorkflowOrchestrator:
             f"{len(generated_files)}",
         )
 
-        test_result = TestExecutionAgent.execute(
-            repository_path
-        )
+        # Compilation first. A file that does not parse
+        # makes every suite fail to load, and the runner
+        # then reports nothing passing out of nothing --
+        # which reads like nothing happened rather than
+        # like the code is broken.
+        compile_result = type_checker.check(repository_path)
 
         steps.record(
-            "step.tests",
-            f"{test_result.status.value} · "
-            f"{test_result.summary}",
-            ok=not test_result.blocks_delivery,
+            "step.types",
+            f"{compile_result.status.value} · "
+            f"{compile_result.summary}",
+            ok=not compile_result.blocks_delivery,
         )
+
+        test_result = (
+            TestExecutionAgent.execute(repository_path)
+            if not compile_result.blocks_delivery
+            else TestResult(
+                status=TestStatus.NOT_RUN,
+                output=(
+                    "Skipped: the code does not compile."
+                ),
+            )
+        )
+
+        if not compile_result.blocks_delivery:
+            steps.record(
+                "step.tests",
+                f"{test_result.status.value} · "
+                f"{test_result.summary}",
+                ok=not test_result.blocks_delivery,
+            )
 
         attempts = 0
 
         while (
-            test_result.blocks_delivery
+            (
+                compile_result.blocks_delivery
+                or test_result.blocks_delivery
+            )
             and attempts < Settings.MAX_TEST_LOOPS
         ):
 
             attempts += 1
 
-            source_files = self.developer.improve(
-                task_description,
-                source_files,
-                TestExecutionAgent.fix_brief(
+            # The compiler names a file and a line, so when
+            # it has something to say it is a better brief
+            # than a failing assertion.
+            brief = (
+                compile_result.brief()
+                if compile_result.blocks_delivery
+                else TestExecutionAgent.fix_brief(
                     test_result,
                     source_files,
                     test_files,
-                ),
+                )
+            )
+
+            source_files = self.developer.improve(
+                task_description,
+                source_files,
+                brief,
                 repository_path,
             )
 
@@ -222,17 +258,38 @@ class WorkflowOrchestrator:
                 source_files + test_files,
             )
 
-            test_result = TestExecutionAgent.execute(
+            compile_result = type_checker.check(
                 repository_path
             )
 
             steps.record(
-                "step.tests_retry",
+                "step.types_retry",
                 f"#{attempts} · "
-                f"{test_result.status.value} · "
-                f"{test_result.summary}",
-                ok=not test_result.blocks_delivery,
+                f"{compile_result.status.value} · "
+                f"{compile_result.summary}",
+                ok=not compile_result.blocks_delivery,
             )
+
+            test_result = (
+                TestExecutionAgent.execute(repository_path)
+                if not compile_result.blocks_delivery
+                else TestResult(
+                    status=TestStatus.NOT_RUN,
+                    output=(
+                        "Skipped: the code does not "
+                        "compile."
+                    ),
+                )
+            )
+
+            if not compile_result.blocks_delivery:
+                steps.record(
+                    "step.tests_retry",
+                    f"#{attempts} · "
+                    f"{test_result.status.value} · "
+                    f"{test_result.summary}",
+                    ok=not test_result.blocks_delivery,
+                )
 
         # What a reviewer will be asked to approve. Read
         # only: the files are already on disk, so this
@@ -257,6 +314,7 @@ class WorkflowOrchestrator:
             review_history=review_history,
             generated_files=generated_files,
             test_result=test_result,
+            compile_result=compile_result,
             diffs=diffs,
             environment=created,
             steps=steps.steps,

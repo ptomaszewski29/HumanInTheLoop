@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from models.compile_result import CompileResult
 from models.generated_file import GeneratedFile
 from models.git_diff import GitDiff
 from models.git_operation import GitOperation
@@ -89,6 +90,10 @@ class Task:
     # them was a console window.
     steps: list[PipelineStep] = field(
         default_factory=list
+    )
+
+    compile_result: CompileResult = field(
+        default_factory=CompileResult
     )
 
     status: TaskStatus = TaskStatus.NEW

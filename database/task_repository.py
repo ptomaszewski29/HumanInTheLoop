@@ -2,6 +2,11 @@ import json
 import sqlite3
 
 from config.settings import Settings
+from models.compile_result import (
+    CompileError,
+    CompileResult,
+    CompileStatus,
+)
 from models.file_type import FileType
 from models.generated_file import GeneratedFile
 from models.git_diff import ChangeType, GitDiff
@@ -54,6 +59,7 @@ COLUMNS = (
     # middle silently shifts every field after it.
     "environment",
     "steps",
+    "compile_result",
 )
 
 COLUMN_LIST = ",\n                ".join(COLUMNS)
@@ -73,6 +79,7 @@ ADDED_COLUMNS = {
     "structural": "TEXT NOT NULL DEFAULT '[]'",
     "environment": "TEXT NOT NULL DEFAULT '[]'",
     "steps": "TEXT NOT NULL DEFAULT '[]'",
+    "compile_result": "TEXT NOT NULL DEFAULT '{}'",
     "review_history": "TEXT NOT NULL DEFAULT '[]'",
     "review_iterations": "INTEGER NOT NULL DEFAULT 0",
     "generated_files": "TEXT NOT NULL DEFAULT '[]'",
@@ -290,6 +297,29 @@ class TaskRepository:
                         for step in task.steps
                     ]
                 ),
+                json.dumps(
+                    {
+                        "status": (
+                            task.compile_result.status.value
+                        ),
+                        "reason": task.compile_result.reason,
+                        "output": task.compile_result.output,
+                        "seconds": (
+                            task.compile_result.duration_seconds
+                        ),
+                        "errors": [
+                            {
+                                "path": error.path,
+                                "line": error.line,
+                                "code": error.code,
+                                "message": error.message,
+                            }
+                            for error in (
+                                task.compile_result.errors
+                            )
+                        ],
+                    }
+                ),
             ),
         )
 
@@ -410,6 +440,41 @@ class TaskRepository:
         )
 
         self.connection.commit()
+
+    def _parse_compile(
+        self,
+        compile_json: str,
+    ) -> CompileResult:
+
+        try:
+            loaded = json.loads(compile_json or "{}")
+
+        except (TypeError, ValueError):
+            return CompileResult()
+
+        if not isinstance(loaded, dict):
+            return CompileResult()
+
+        return CompileResult(
+            status=CompileStatus(
+                loaded.get("status", "NOT_RUN")
+            ),
+            reason=str(loaded.get("reason", "")),
+            output=str(loaded.get("output", "")),
+            duration_seconds=float(
+                loaded.get("seconds", 0) or 0
+            ),
+            errors=[
+                CompileError(
+                    path=str(item.get("path", "")),
+                    line=int(item.get("line", 0) or 0),
+                    code=str(item.get("code", "")),
+                    message=str(item.get("message", "")),
+                )
+                for item in loaded.get("errors", [])
+                if isinstance(item, dict)
+            ],
+        )
 
     def _parse_steps(
         self,
@@ -625,6 +690,7 @@ class TaskRepository:
             created_at=row[23],
             environment=self._parse_findings(row[24]),
             steps=self._parse_steps(row[25]),
+            compile_result=self._parse_compile(row[26]),
         )
 
     def get_all(

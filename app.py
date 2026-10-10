@@ -17,6 +17,7 @@ from database.requirement_repository import (
     RequirementRepository,
 )
 from database.task_repository import TaskRepository
+from models.compile_result import CompileStatus
 from models.file_type import FileType
 from models.git_push_operation import PushStatus
 from models.pull_request_info import PullRequestState
@@ -1603,7 +1604,40 @@ if st.session_state.task:
             len(task.suggestions),
         )
 
-    if task.test_result.status == TestStatus.FAILED:
+    compiled = task.compile_result
+
+    if compiled.status == CompileStatus.FAILED:
+
+        st.error(
+            t("types.failed", summary=compiled.summary)
+        )
+
+        with st.expander(
+            t("types.errors", count=len(compiled.errors)),
+            expanded=True,
+        ):
+
+            for problem in compiled.errors[:30]:
+                st.write(f"- `{problem}`")
+
+    elif compiled.status == CompileStatus.UNAVAILABLE:
+
+        st.warning(
+            t("types.unavailable", reason=compiled.reason)
+        )
+
+    elif compiled.status == CompileStatus.PASSED:
+
+        st.success(t("types.passed"))
+
+    if (
+        compiled.blocks_delivery
+        and task.test_result.status == TestStatus.NOT_RUN
+    ):
+
+        st.warning(t("tests.skipped_no_compile"))
+
+    elif task.test_result.status == TestStatus.FAILED:
 
         st.error(
             t(

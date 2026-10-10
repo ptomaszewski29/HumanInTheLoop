@@ -346,6 +346,51 @@ reason is shown under the list rather than as a banner over everything.
 
 ---
 
+## Does it compile?
+
+The test gate was the last thing between generated code and a reviewer,
+and it was answering the wrong question first. A file that does not parse
+makes every suite in the repository fail to load, and Vitest then reports
+**zero tests passing out of zero** — which reads like nothing happened
+rather than like the code is broken. One real run showed `0/0 passed` and
+a startup error buried below it.
+
+So the compiler runs first, over the whole project, with `--noEmit`:
+read-only, writing nothing, judging only. It is deterministic, it is
+fast, and it knows exactly where the problem is.
+
+| Status | Meaning |
+|---|---|
+| `PASSED` | the project compiles; the tests run next |
+| `FAILED` | it does not; the tests are skipped and the work goes back |
+| `UNAVAILABLE` | no tsconfig, no TypeScript installed, no node |
+
+`UNAVAILABLE` does not block, for the same reason it does not in the test
+gate: a missing compiler is not something the developer can fix by
+rewriting code.
+
+The brief this produces is the point. A failing assertion says what went
+wrong; a compiler says **where**:
+
+```text
+The TypeScript compiler rejected this code. Fix exactly these,
+and change nothing else:
+- src/bucket.ts:26 — Cannot find name 'refillRate'. Did you mean 'this.refillRate'?
+- src/bucket-factory.ts:7 — Property 'remainingTokens' is missing in type 'TokenBucket'
+```
+
+Nobody had to ask the model to guess, which is the same principle as
+naming the import that closes a cycle rather than describing the cycle.
+
+Run against a repository this platform had already filled, the gate
+found **65 type errors** in seven seconds — interfaces not implemented,
+modules imported that were never exported, a name used before it was
+declared. None of them had been caught by anything else: the structural
+validator checks imports, symbols and cycles, and none of those is the
+same question as "does this compile".
+
+---
+
 ## The review loop
 
 Each round:

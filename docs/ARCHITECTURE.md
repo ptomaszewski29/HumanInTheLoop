@@ -219,6 +219,7 @@ its own test.
 | `repository_context` | what the repository *is*: state, tooling, test framework |
 | `translations` | every word the interface says, in both languages |
 | `package_installer` | the one call that reaches the network, behind a button |
+| `type_checker` | whether the project compiles, read-only |
 | `bootstrap` | writes the scaffolding a repository is missing, from templates |
 | `file_writer` | writes inside the repository, and nowhere else |
 | `file_naming` | derives repository paths from the generated code |
