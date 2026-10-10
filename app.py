@@ -30,6 +30,7 @@ from models.task_execution import (
 )
 from models.task_status import TaskStatus
 from models.test_result import TestStatus
+from services.bootstrap import TEMPLATES as BOOTSTRAP_FILES
 from services.file_writer import FileWriter
 from services.git_diff_service import GitDiffService
 from services.git_service import GitError, GitService
@@ -77,6 +78,13 @@ if "requirement" not in st.session_state:
 
 if "issues" not in st.session_state:
     st.session_state.issues = None
+
+# Which remote the issues in session state came from.
+# Streamlit reruns the whole script on every interaction,
+# so without this the app would call GitHub on every
+# click; with it, once per remote per session.
+if "issues_from" not in st.session_state:
+    st.session_state.issues_from = None
 
 if "install_output" not in st.session_state:
     st.session_state.install_output = ""
@@ -441,17 +449,24 @@ with st.sidebar:
                     context.test_framework.value.title()
                     if context.test_framework
                     != TestFramework.NONE
-                    else "none"
+                    else t("context.framework_none")
                 )
 
                 st.caption(
-                    f"{context.file_count} source file(s) · "
-                    f"test framework: {framework}"
-                    + (
-                        " · folders: "
-                        + ", ".join(context.source_folders)
-                        if context.source_folders
-                        else ""
+                    t(
+                        "context.summary_line",
+                        files=context.file_count,
+                        framework=framework,
+                        folders=(
+                            t(
+                                "context.folders_suffix",
+                                names=", ".join(
+                                    context.source_folders
+                                ),
+                            )
+                            if context.source_folders
+                            else ""
+                        ),
                     )
                 )
 
@@ -622,22 +637,55 @@ with st.sidebar:
         except GitError:
             remote_url = ""
 
-    if st.button(
+    # Fetched when the app opens rather than waiting for a
+    # button: the backlog is where work starts, and a
+    # button that has to be pressed before anything is
+    # visible is a button that gets forgotten.
+    stale = (
+        remote_url
+        and st.session_state.issues_from != remote_url
+    )
+
+    # Evaluated before the `or`, not inside it: a
+    # short-circuit would skip the call that draws the
+    # button, and a stale read would make it vanish.
+    pressed = st.button(
         t("issue.load"),
         use_container_width=True,
         disabled=not remote_url,
-    ):
+    )
+
+    if stale or pressed:
         found, problem = IssueAgent.open_issues(remote_url)
 
         st.session_state.issues = found
 
-        if problem:
+        # Recorded even when the read failed, so a remote
+        # with no token is tried once rather than on every
+        # rerun.
+        st.session_state.issues_from = remote_url
+
+        if problem and not stale:
+
+            # On an automatic read the reason belongs under
+            # the list, not as a banner over the whole app.
             st.session_state.git_message = (
                 "warning",
-                f"Could not read issues: {problem}",
+                t("issue.could_not_read", reason=problem),
             )
 
-        st.rerun()
+        st.session_state.issues_problem = problem
+
+        if not stale:
+            st.rerun()
+
+    if st.session_state.get("issues_problem"):
+        st.caption(
+            t(
+                "issue.could_not_read",
+                reason=st.session_state.issues_problem,
+            )
+        )
 
     if not remote_url:
         st.caption(
@@ -771,18 +819,73 @@ if st.session_state.requirement:
     ]
 
     st.caption(
-        "Status: "
-        + requirement.lifecycle(
-            plans=len(plans_for),
-            started=sum(
-                1 for item in plans_for if item.started
-            ),
-            outstanding=sum(
-                len(item.remaining) for item in plans_for
-            ),
-        ).value
-        + f" · updated {requirement.updated_at[:19]}"
+        t(
+            "requirement.status",
+            state=requirement.lifecycle(
+                plans=len(plans_for),
+                started=sum(
+                    1
+                    for item in plans_for
+                    if item.started
+                ),
+                outstanding=sum(
+                    len(item.remaining)
+                    for item in plans_for
+                ),
+            ).value,
+            when=requirement.updated_at[:19],
+        )
     )
+
+    # A requirement and its plans are one piece of work,
+    # and the link was only ever stored, never shown: the
+    # requirement said PLANNED and gave no way to reach
+    # the plan that made it so.
+    if plans_for:
+
+        with st.expander(
+            t(
+                "requirement.linked_plans",
+                count=len(plans_for),
+            ),
+            expanded=True,
+        ):
+
+            for linked in plans_for:
+
+                counts = linked.dashboard()
+
+                st.caption(
+                    t(
+                        "requirement.plan_progress",
+                        done=counts["COMPLETED"],
+                        total=counts["TOTAL"],
+                        state=(
+                            t("board.failed")
+                            if counts["FAILED"]
+                            else t("board.running")
+                            if counts["RUNNING"]
+                            else t("board.completed")
+                            if not linked.remaining
+                            else t("board.ready")
+                        ),
+                    )
+                )
+
+                st.progress(linked.percent_complete)
+
+                if st.button(
+                    t("requirement.open_plan"),
+                    key=f"open-plan-{linked.id}",
+                    use_container_width=True,
+                ):
+                    st.session_state.plan = linked
+
+                    st.rerun()
+
+    else:
+
+        st.info(t("requirement.no_plans"))
 
     new_title = st.text_input(
         t("requirement.title"),
@@ -908,31 +1011,36 @@ if st.session_state.plan:
 
         with left:
             st.caption(
-                f"📦 {environment.state.value} · "
-                + (
-                    "scaffolding: "
-                    + ", ".join(
-                        name
-                        for name in (
-                            t("context.package_json"),
-                            "tsconfig.json",
-                            "vitest.config.ts",
+                t(
+                    "context.state_line",
+                    state=environment.state.value,
+                    scaffolding=(
+                        t(
+                            "context.scaffolding_missing",
+                            names=", ".join(
+                                environment.missing
+                            ),
                         )
-                        if name not in environment.missing
-                    )
-                    if not environment.missing
-                    else "missing: "
-                    + ", ".join(environment.missing)
+                        if environment.missing
+                        else t(
+                            "context.scaffolding_present",
+                            names=", ".join(
+                                sorted(BOOTSTRAP_FILES)
+                            ),
+                        )
+                    ),
                 )
             )
 
         with right:
             st.caption(
-                "🧪 tests "
-                + (
-                    "runnable"
-                    if environment.tests_runnable
-                    else "cannot run"
+                t(
+                    "context.tests_state",
+                    state=(
+                        t("context.tests_can_run")
+                        if environment.tests_runnable
+                        else t("context.tests_cannot_run")
+                    ),
                 )
             )
 
@@ -1420,6 +1528,30 @@ if st.session_state.task:
     st.write(
         t("task.description_line", text=task.description)
     )
+
+    with st.expander(
+        t("steps.heading", count=len(task.steps)),
+    ):
+
+        if not task.steps:
+
+            st.caption(t("steps.none"))
+
+        for step in task.steps:
+
+            st.write(
+                "{mark} `{at}` **{name}** {detail}{took}".format(
+                    mark="✅" if step.ok else "⚠️",
+                    at=step.at[11:19],
+                    name=t(step.name),
+                    detail=step.detail,
+                    took=(
+                        f" · {step.duration}"
+                        if step.duration
+                        else ""
+                    ),
+                )
+            )
 
     metric_1, metric_2, metric_3 = st.columns(3)
 

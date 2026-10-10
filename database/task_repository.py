@@ -11,6 +11,7 @@ from models.git_push_operation import (
     PushStatus,
 )
 from models.github_issue import IssueLink
+from models.pipeline_step import PipelineStep
 from models.pull_request_info import (
     PullRequestInfo,
     PullRequestState,
@@ -52,6 +53,7 @@ COLUMNS = (
     # appended here and nowhere else: inserting one in the
     # middle silently shifts every field after it.
     "environment",
+    "steps",
 )
 
 COLUMN_LIST = ",\n                ".join(COLUMNS)
@@ -70,6 +72,7 @@ ADDED_COLUMNS = {
     "suggestions": "TEXT NOT NULL DEFAULT '[]'",
     "structural": "TEXT NOT NULL DEFAULT '[]'",
     "environment": "TEXT NOT NULL DEFAULT '[]'",
+    "steps": "TEXT NOT NULL DEFAULT '[]'",
     "review_history": "TEXT NOT NULL DEFAULT '[]'",
     "review_iterations": "INTEGER NOT NULL DEFAULT 0",
     "generated_files": "TEXT NOT NULL DEFAULT '[]'",
@@ -275,6 +278,18 @@ class TaskRepository:
                 task.status.value,
                 task.created_at,
                 json.dumps(task.environment),
+                json.dumps(
+                    [
+                        {
+                            "name": step.name,
+                            "detail": step.detail,
+                            "at": step.at,
+                            "seconds": step.seconds,
+                            "ok": step.ok,
+                        }
+                        for step in task.steps
+                    ]
+                ),
             ),
         )
 
@@ -395,6 +410,32 @@ class TaskRepository:
         )
 
         self.connection.commit()
+
+    def _parse_steps(
+        self,
+        steps_json: str,
+    ) -> list[PipelineStep]:
+
+        try:
+            loaded = json.loads(steps_json or "[]")
+
+        except (TypeError, ValueError):
+            return []
+
+        if not isinstance(loaded, list):
+            return []
+
+        return [
+            PipelineStep(
+                name=str(item.get("name", "")),
+                detail=str(item.get("detail", "")),
+                at=str(item.get("at", "")),
+                seconds=float(item.get("seconds", 0) or 0),
+                ok=bool(item.get("ok", True)),
+            )
+            for item in loaded
+            if isinstance(item, dict)
+        ]
 
     def _parse_findings(
         self,
@@ -583,6 +624,7 @@ class TaskRepository:
             status=TaskStatus(row[22]),
             created_at=row[23],
             environment=self._parse_findings(row[24]),
+            steps=self._parse_steps(row[25]),
         )
 
     def get_all(

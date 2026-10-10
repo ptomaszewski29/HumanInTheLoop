@@ -16,6 +16,7 @@ from models.repository_context import (
 )
 from services.bootstrap import TEMPLATES, bootstrap
 from services.repository_context import describe
+from services.translations import MESSAGES
 
 failures: list[str] = []
 
@@ -518,6 +519,135 @@ check(
 check(
     "a run that created nothing records nothing",
     Task(description="x").environment,
+    [],
+)
+
+print()
+print("=" * 80)
+print("WHAT THE PIPELINE DID IS KEPT, NOT JUST PRINTED")
+print("=" * 80)
+
+from models.pipeline_step import PipelineStep, StepRecorder
+
+recorder = StepRecorder()
+
+recorder.record("step.developer", "3 file(s), 900 chars")
+
+recorder.record("step.architect", "#1 · 85/100")
+
+recorder.record("step.tests", "FAILED · 0/3", ok=False)
+
+check("three steps", len(recorder.steps), 3)
+
+check(
+    "in the order they happened",
+    [step.name for step in recorder.steps],
+    ["step.developer", "step.architect", "step.tests"],
+)
+
+check(
+    "a step that went wrong says so",
+    [step.ok for step in recorder.steps],
+    [True, True, False],
+)
+
+check(
+    "and each one is timed",
+    all(step.seconds >= 0 for step in recorder.steps),
+    True,
+)
+
+check(
+    "a step with no measurable time shows none",
+    PipelineStep(seconds=0).duration,
+    "",
+)
+
+check(
+    "seconds under a minute",
+    PipelineStep(seconds=42).duration,
+    "42s",
+)
+
+check(
+    "minutes above one",
+    PipelineStep(seconds=150).duration,
+    "2.5m",
+)
+
+stepped = os.path.join(folder(), "steps.db")
+
+carried = Task(
+    description="x",
+    status=TaskStatus.APPROVED,
+    steps=recorder.steps,
+)
+
+TaskRepository(stepped).save(carried)
+
+restored_steps = TaskRepository(stepped).get_by_id(
+    carried.id
+)
+
+check(
+    "they survive a restart",
+    [
+        (step.name, step.detail, step.ok)
+        for step in restored_steps.steps
+    ],
+    [
+        (step.name, step.detail, step.ok)
+        for step in recorder.steps
+    ],
+)
+
+check(
+    "and the fields after them are not shifted",
+    (
+        restored_steps.status,
+        restored_steps.description,
+        restored_steps.environment,
+    ),
+    (TaskStatus.APPROVED, "x", []),
+)
+
+older_steps = os.path.join(folder(), "legacy-steps.db")
+
+TaskRepository(older_steps).save(Task(description="old"))
+
+connection = sqlite3.connect(older_steps)
+
+connection.execute("ALTER TABLE tasks DROP COLUMN steps")
+
+connection.commit()
+
+connection.close()
+
+check(
+    "a row written before the column still loads",
+    [
+        (item.description, item.steps)
+        for item in TaskRepository(older_steps).get_all()
+    ],
+    [("old", [])],
+)
+
+check(
+    "every step name is a key the dictionary knows",
+    [
+        name
+        for name in (
+            "step.bootstrap",
+            "step.developer",
+            "step.architect",
+            "step.improve",
+            "step.qa",
+            "step.written",
+            "step.tests",
+            "step.tests_retry",
+        )
+        if name not in MESSAGES
+    ],
     [],
 )
 

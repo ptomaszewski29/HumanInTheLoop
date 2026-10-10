@@ -173,6 +173,33 @@ EXEMPT = re.compile(
     r"|s|ms|kB|MB)$"
 )
 
+def literal_parts(node: ast.AST) -> list[str]:
+    """The prose written directly into an expression.
+
+    Anything inside a call is skipped: a t("key") carries
+    the key as a constant, and counting those would report
+    every translated message as untranslated.
+    """
+
+    if isinstance(node, ast.Call):
+        return []
+
+    if isinstance(node, ast.Constant):
+
+        return (
+            [node.value]
+            if isinstance(node.value, str)
+            else []
+        )
+
+    found: list[str] = []
+
+    for child in ast.iter_child_nodes(node):
+        found.extend(literal_parts(child))
+
+    return found
+
+
 untranslated: list[str] = []
 
 for node in ast.walk(tree):
@@ -206,6 +233,13 @@ for node in ast.walk(tree):
                 for piece in argument.values
                 if isinstance(piece, ast.Constant)
             )
+
+        elif isinstance(argument, ast.BinOp):
+
+            # "Status: " + value + " · updated" slipped
+            # past the first version of this check, which
+            # looked only at constants and f-strings.
+            text = " ".join(literal_parts(argument))
 
         if not text.strip() or EXEMPT.match(text.strip()):
             continue

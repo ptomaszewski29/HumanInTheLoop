@@ -292,6 +292,60 @@ collapse to one instruction, and cutting it breaks all of them.
 
 ---
 
+## What a run did
+
+A task is a dozen decisions — what was scaffolded, how many files were
+planned, what each review round scored, whether the tests ran — and until
+now the only record of them was a console window. Close the terminal and
+the evidence was a pile of files and a number.
+
+Every stage is now recorded on the task and persisted: the step, the
+facts (paths, counts, scores), when it happened, how long it took, and
+whether it went well. The **🧭 Steps** panel on a task reads back the
+whole run after a restart.
+
+```text
+✅ 09:31:02  Project scaffolding      package.json, tsconfig.json, .gitignore
+✅ 09:31:44  Developer wrote the code 8 file(s), 12231 chars · 42s
+⚠️ 09:32:10  Architect review         #1 · 60/100 · REQUEST_CHANGES · 2B 1S · 26s
+✅ 09:33:05  QA wrote the tests       7 file(s), 9800 chars · 55s
+⚠️ 09:33:14  Tests run                FAILED · 0/3 · 9s
+```
+
+The step name is translated; the detail is facts, which read the same in
+either language.
+
+---
+
+## A requirement and its plans
+
+A requirement's state was always derived from the plans it produced —
+`DRAFT`, `PLANNED`, `EXECUTING`, `COMPLETED` — but the link was only
+stored, never shown. A requirement said `PLANNED` and offered no way to
+reach the plan that made it so.
+
+The requirement now lists the plans made from it, each with its progress
+and a button to open it, so the two stay one piece of work rather than
+two records that happen to share an id. Nothing is cached: the state is
+computed from the plans on every render, so finishing a task updates the
+requirement that asked for it.
+
+---
+
+## The backlog arrives on its own
+
+GitHub issues used to wait behind a button. The backlog is where work
+starts, and a button that has to be pressed before anything is visible is
+a button that gets forgotten — so the issues for the selected
+repository's remote are read when the app opens.
+
+Once per remote per session, not per interaction: Streamlit reruns the
+whole script on every click, and without that bookkeeping the app would
+call GitHub on each one. A remote with no token is tried once and the
+reason is shown under the list rather than as a banner over everything.
+
+---
+
 ## The review loop
 
 Each round:

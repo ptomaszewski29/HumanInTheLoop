@@ -552,6 +552,129 @@ MESSAGES: dict[str, dict[str, str]] = {
         "en": "Pull request failed: {reason}",
     },
     "pr.state": {"pl": "Stan", "en": "State"},
+    "context.summary_line": {
+        "pl": (
+            "{files} plik(ów) źródłowych · framework "
+            "testów: {framework}{folders}"
+        ),
+        "en": (
+            "{files} source file(s) · test framework: "
+            "{framework}{folders}"
+        ),
+    },
+    "context.folders_suffix": {
+        "pl": " · katalogi: {names}",
+        "en": " · folders: {names}",
+    },
+    "context.framework_none": {
+        "pl": "brak",
+        "en": "none",
+    },
+    "context.state_line": {
+        "pl": "📦 {state} · {scaffolding}",
+        "en": "📦 {state} · {scaffolding}",
+    },
+    "context.scaffolding_present": {
+        "pl": "rusztowanie: {names}",
+        "en": "scaffolding: {names}",
+    },
+    "context.scaffolding_missing": {
+        "pl": "brakuje: {names}",
+        "en": "missing: {names}",
+    },
+    "context.tests_state": {
+        "pl": "🧪 testy: {state}",
+        "en": "🧪 tests: {state}",
+    },
+    "context.tests_can_run": {
+        "pl": "uruchamialne",
+        "en": "runnable",
+    },
+    "context.tests_cannot_run": {
+        "pl": "nie mogą działać",
+        "en": "cannot run",
+    },
+    # -------------------------------------------- steps
+    "steps.heading": {
+        "pl": "🧭 Kroki ({count})",
+        "en": "🧭 Steps ({count})",
+    },
+    "steps.none": {
+        "pl": (
+            "To zadanie powstało, zanim kroki były "
+            "zapisywane."
+        ),
+        "en": (
+            "This task ran before steps were recorded."
+        ),
+    },
+    "step.bootstrap": {
+        "pl": "Rusztowanie projektu",
+        "en": "Project scaffolding",
+    },
+    "step.developer": {
+        "pl": "Developer napisał kod",
+        "en": "Developer wrote the code",
+    },
+    "step.architect": {
+        "pl": "Recenzja architekta",
+        "en": "Architect review",
+    },
+    "step.improve": {
+        "pl": "Developer poprawił kod",
+        "en": "Developer revised the code",
+    },
+    "step.qa": {
+        "pl": "QA napisało testy",
+        "en": "QA wrote the tests",
+    },
+    "step.written": {
+        "pl": "Zapisano plików na dysk",
+        "en": "Files written to disk",
+    },
+    "step.tests": {
+        "pl": "Uruchomiono testy",
+        "en": "Tests run",
+    },
+    "step.tests_retry": {
+        "pl": "Testy po poprawce",
+        "en": "Tests after a fix",
+    },
+    # --------------------------------- requirement plans
+    "requirement.status": {
+        "pl": "Status: {state} · zaktualizowano {when}",
+        "en": "Status: {state} · updated {when}",
+    },
+    "requirement.linked_plans": {
+        "pl": "Powiązane plany ({count})",
+        "en": "Linked plans ({count})",
+    },
+    "requirement.no_plans": {
+        "pl": (
+            "Brak planów. **🧠 Generuj plan** rozbije to "
+            "wymaganie na zadania."
+        ),
+        "en": (
+            "No plans yet. **🧠 Generate plan** breaks "
+            "this requirement into tasks."
+        ),
+    },
+    "requirement.plan_progress": {
+        "pl": "{done}/{total} zadań · {state}",
+        "en": "{done}/{total} tasks · {state}",
+    },
+    "requirement.open_plan": {
+        "pl": "📋 Otwórz plan",
+        "en": "📋 Open plan",
+    },
+    "issue.loaded": {
+        "pl": "Wczytano {count} otwartych zgłoszeń.",
+        "en": "Loaded {count} open issue(s).",
+    },
+    "issue.could_not_read": {
+        "pl": "Nie udało się odczytać zgłoszeń: {reason}",
+        "en": "Could not read issues: {reason}",
+    },
     # ---------------------------------------- dashboard
     "board.total": {"pl": "Razem", "en": "Total"},
     "board.completed": {

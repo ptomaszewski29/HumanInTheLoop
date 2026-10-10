@@ -7,6 +7,7 @@ from models.git_diff import GitDiff
 from models.git_operation import GitOperation
 from models.git_push_operation import GitPushOperation
 from models.github_issue import IssueLink
+from models.pipeline_step import PipelineStep
 from models.pull_request_info import PullRequestInfo
 from models.review_history import (
     ReviewHistory,
@@ -82,6 +83,13 @@ class Task:
     # mention: a repair nobody is told about is worse than
     # no repair.
     environment: list[str] = field(default_factory=list)
+
+    # What the pipeline did, in order. Kept because a run
+    # is a dozen decisions and the only other record of
+    # them was a console window.
+    steps: list[PipelineStep] = field(
+        default_factory=list
+    )
 
     status: TaskStatus = TaskStatus.NEW
 

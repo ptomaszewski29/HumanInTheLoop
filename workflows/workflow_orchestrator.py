@@ -7,6 +7,7 @@ from models.file_generation_result import (
     FileGenerationResult,
 )
 from models.generated_file import GeneratedFile
+from models.pipeline_step import StepRecorder
 from models.review_history import (
     ReviewHistory,
 )
@@ -19,6 +20,15 @@ from services.repository_context import describe
 from workflows.review_decision import (
     ReviewDecision,
 )
+
+
+def describe_files(files: list[GeneratedFile]) -> str:
+    """How much came back, for the step record."""
+
+    return (
+        f"{len(files)} file(s), "
+        f"{sum(len(item.content) for item in files)} chars"
+    )
 
 
 class WorkflowOrchestrator:
@@ -43,11 +53,24 @@ class WorkflowOrchestrator:
 
         review_history: list[ReviewHistory] = []
 
+        steps = StepRecorder()
+
         created = self.prepare(repository_path)
+
+        if created:
+            steps.record(
+                "step.bootstrap",
+                ", ".join(created),
+            )
 
         source_files = self.developer.execute(
             task_description,
             repository_path,
+        )
+
+        steps.record(
+            "step.developer",
+            describe_files(source_files),
         )
 
         if not source_files:
@@ -66,6 +89,17 @@ class WorkflowOrchestrator:
             )
 
             review_iterations += 1
+
+            steps.record(
+                "step.architect",
+                f"#{review_iterations} · "
+                f"{architecture_review.score}/100 · "
+                f"{architecture_review.recommendation.value}"
+                f" · {len(architecture_review.blockers)}B"
+                f" {len(architecture_review.structural)}S",
+                ok=not architecture_review.blockers
+                and not architecture_review.structural,
+            )
 
             review_history.append(
                 ReviewHistory(
@@ -102,7 +136,17 @@ class WorkflowOrchestrator:
                 repository_path,
             )
 
+            steps.record(
+                "step.improve",
+                describe_files(source_files),
+            )
+
         test_files = self.qa.execute(source_files)
+
+        steps.record(
+            "step.qa",
+            describe_files(test_files),
+        )
 
         generated_files = self.write_files(
             repository_path,
@@ -112,8 +156,20 @@ class WorkflowOrchestrator:
         # Run what was just generated. A failure sends the
         # files back; a missing toolchain does not, because
         # the developer cannot install one.
+        steps.record(
+            "step.written",
+            f"{len(generated_files)}",
+        )
+
         test_result = TestExecutionAgent.execute(
             repository_path
+        )
+
+        steps.record(
+            "step.tests",
+            f"{test_result.status.value} · "
+            f"{test_result.summary}",
+            ok=not test_result.blocks_delivery,
         )
 
         attempts = 0
@@ -170,6 +226,14 @@ class WorkflowOrchestrator:
                 repository_path
             )
 
+            steps.record(
+                "step.tests_retry",
+                f"#{attempts} · "
+                f"{test_result.status.value} · "
+                f"{test_result.summary}",
+                ok=not test_result.blocks_delivery,
+            )
+
         # What a reviewer will be asked to approve. Read
         # only: the files are already on disk, so this
         # compares them with what git has recorded.
@@ -195,6 +259,7 @@ class WorkflowOrchestrator:
             test_result=test_result,
             diffs=diffs,
             environment=created,
+            steps=steps.steps,
             status=TaskStatus.WAITING_FOR_APPROVAL,
         )
 
